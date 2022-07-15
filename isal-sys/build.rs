@@ -39,7 +39,7 @@ fn compile(include: &PathBuf) -> Result<&'static str> {
         .unwrap()
         .into_iter()
         .map(|f| f.unwrap())
-        .filter(|f| f.file_name().to_str().unwrap().ends_with(".c"))
+        .filter(|f| f.file_name().to_str().unwrap() == "igzip.c")
         .map(|f| f.path());
 
     cc::Build::new()
