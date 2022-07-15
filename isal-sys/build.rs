@@ -1,40 +1,57 @@
+use std::fs;
 use std::env;
 use std::path::PathBuf;
-use std::str::FromStr;
 
-fn main() {
-    // Tell cargo to look for shared libraries in the specified directory
-    //println!("cargo:rustc-link-search=/path/to/lib");
 
-    // Tell cargo to tell rustc to link the system bzip2
-    // shared library.
-    println!("cargo:rustc-link-lib=igzip");
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-    // Tell cargo to invalidate the built crate whenever the wrapper changes
+
+fn main() -> Result<()> {
+
+    let include = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/include");
+    let lib_name = compile(&include)?;
+
+    let out_dir = env::var("OUT_DIR")?;
+
+    println!("cargo:rustc-link-search={}", out_dir);
+    println!("cargo:rustc-link-lib=static={}", lib_name);
     println!("cargo:rerun-if-changed=wrapper.h");
 
-    let path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
-    let path = path.join("isa-l/include");
-
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
     let bindings = bindgen::Builder::default()
-        // The input header we would like to generate
-        // bindings for.
         .header("wrapper.h")
-        .clang_arg(format!("-I{}", path.display()))
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
+        .clang_arg(format!("-I{}", include.display()))
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        // Finish the builder and generate the bindings.
-        .generate()
-        // Unwrap the Result and panic on failure.
-        .expect("Unable to generate bindings");
+        .generate()?;
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    bindings
-        .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");
+    let out_path = PathBuf::from(out_dir).join("bindings.rs");
+    bindings.write_to_file(out_path)?;
+        
+    Ok(())
+}
+
+// Compile into static lib
+fn compile(include: &PathBuf) -> Result<&'static str> {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/igzip");
+
+    // deps
+    let deps = fs::read_dir(&src)
+        .unwrap()
+        .into_iter()
+        .map(|f| f.unwrap())
+        .filter(|f| f.file_name().to_str().unwrap().ends_with(".c"))
+        .map(|f| f.path());
+
+    cc::Build::new()
+        .compiler(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("zcc"))
+        .files(deps)
+        .include(&include)
+        .cpp(false)
+        .shared_flag(false)
+        .static_flag(true)
+        .flag("-g")
+        .flag("-s")
+        .compile("igzip");
+
+    Ok("igzip")
 }
