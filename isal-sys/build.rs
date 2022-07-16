@@ -1,32 +1,31 @@
-use std::fs;
+#![allow(dead_code)] // TODO
 use std::env;
+use std::fs;
 use std::path::PathBuf;
-
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-
 fn main() -> Result<()> {
-
-    let include = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/include");
-    let lib_name = compile(&include)?;
+    let _include = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/include");
+    let lib_name = "isal"; //compile(&include)?;
 
     let out_dir = env::var("OUT_DIR")?;
 
-    println!("cargo:rustc-link-search={}", out_dir);
-    println!("cargo:rustc-link-lib=static={}", lib_name);
+    //println!("cargo:rustc-link-search={}", out_dir);
+    println!("cargo:rustc-link-lib={}", lib_name);
     println!("cargo:rerun-if-changed=wrapper.h");
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_arg(format!("-I{}", include.display()))
+        //.clang_arg(format!("-I{}", include.display()))
+        .clang_arg("-fPIC")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()?;
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(out_dir).join("bindings.rs");
     bindings.write_to_file(out_path)?;
-        
+
     Ok(())
 }
 
@@ -39,7 +38,15 @@ fn compile(include: &PathBuf) -> Result<&'static str> {
         .unwrap()
         .into_iter()
         .map(|f| f.unwrap())
-        .filter(|f| f.file_name().to_str().unwrap() == "igzip.c")
+        .filter(|f| {
+            let file_name = f.file_name();
+            let name = file_name.to_str().unwrap();
+            name.ends_with(".c")
+                && !name.contains("perf")
+                && !name.contains("test")
+                && !name.contains("example")
+                && !name.contains("generate")
+        })
         .map(|f| f.path());
 
     cc::Build::new()
