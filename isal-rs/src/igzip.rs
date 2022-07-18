@@ -1,12 +1,12 @@
 #![allow(dead_code)] // TODO
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::mem;
 use std::os::raw::c_int;
 
 use isal_sys as isal;
 
 /// Buffer size
-pub const BUF_SIZE: usize = 8192;
+pub const BUF_SIZE: usize = 16 * 1024;
 
 /// Result type
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -154,13 +154,45 @@ pub fn compress_into(input: &[u8], output: &mut [u8], level: u8, is_gzip: bool) 
 }
 
 /// Compress `input`
-#[inline]
-pub fn compress<R: Read>(input: R, level: CompressionLevel, is_gzip: bool) -> Result<Vec<u8>> {
-    let mut encoder = read::Encoder::new(input, level, is_gzip);
-    let mut output = vec![];
-    encoder.read_to_end(&mut output)?;
-    //encoder.read(&mut output)?;
-    Ok(output)
+#[inline(always)]
+pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<Vec<u8>> {
+    let mut buf = vec![];
+
+    let mut n_bytes = 0;
+
+    let mut zstream = new_zstream(isal::isal_deflate_init);
+
+    zstream.end_of_stream = 1;
+    zstream.flush = isal::NO_FLUSH as _;
+
+    zstream.level = 3; //level as _;
+    zstream.gzip_flag = is_gzip as _;
+
+    let level_buf_size = isal::ISAL_DEF_LVL3_DEFAULT; // TODO: set level buf sizes
+    let mut level_buf = vec![0_u8; level_buf_size as _];
+    zstream.level_buf = level_buf.as_mut_ptr();
+    zstream.level_buf_size = level_buf.len() as _;
+
+    // TODO: impl level one condition: https://github.com/intel/isa-l/blob/62519d97ec8242dce393a1f81593f4f67da3ac92/igzip/igzip_example.c#L70
+    // read input into buffer
+    zstream.avail_in = input.len() as _;
+    zstream.next_in = input.as_ptr() as *mut _;
+
+    // compress this block
+    //dbg!(zstream.avail_in, zstream.internal_state.state, zstream.end_of_stream);
+    //std::thread::sleep(std::time::Duration::from_millis(50));
+    while zstream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
+        buf.resize(buf.len() + BUF_SIZE, 0);
+        zstream.avail_out = BUF_SIZE as _;
+        zstream.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+
+        unsafe { isal::isal_deflate(&mut zstream as *mut _) };
+
+        let n = BUF_SIZE - zstream.avail_out as usize;
+        n_bytes += n;
+    }
+    buf.truncate(n_bytes);
+    Ok(buf)
 }
 
 /// Combine error handling for both isal_deflate/_stateless functions
@@ -206,7 +238,7 @@ mod tests {
 
     fn get_data() -> Vec<u8> {
         fs::read(format!(
-            "{}/../../pyrus-cramjam/benchmarks/data/paper-100k.pdf",
+            "{}/../../pyrus-cramjam/benchmarks/data/html_x_4",
             env!("CARGO_MANIFEST_DIR")
         ))
         .unwrap()
@@ -227,8 +259,8 @@ mod tests {
     #[test]
     fn basic_compress() {
         let data = get_data();
-        let rdr = Cursor::new(data);
-        let output = compress(rdr, CompressionLevel::Three, true).unwrap();
+        let output = compress(&data, CompressionLevel::Three, true).unwrap();
+        dbg!(output.len());
         println!(
             "n_bytes: {:?}",
             &output[..std::cmp::min(output.len() - 1, 100)]
