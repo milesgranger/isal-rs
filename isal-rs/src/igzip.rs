@@ -128,7 +128,7 @@ pub(crate) fn new_zstream(
 }
 
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
-#[inline]
+#[inline(always)]
 pub fn compress_into(input: &[u8], output: &mut [u8], level: u8, is_gzip: bool) -> Result<usize> {
     let mut zstream = new_zstream(isal::isal_deflate_stateless_init);
 
