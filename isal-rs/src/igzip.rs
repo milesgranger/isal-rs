@@ -1,4 +1,4 @@
-#![allow(dead_code)] // TODO
+#![allow(dead_code, unused_imports, unused_variables)] // TODO
 use std::io::{self, Read, Write};
 use std::mem;
 use std::os::raw::c_int;
@@ -195,6 +195,53 @@ pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<
     Ok(buf)
 }
 
+#[inline(always)]
+pub(crate) fn new_inflate_state(
+    init: unsafe extern "C" fn(*mut isal::inflate_state),
+) -> isal::inflate_state {
+    let mut uninit: mem::MaybeUninit<isal::inflate_state> = mem::MaybeUninit::uninit();
+    unsafe { init(uninit.as_mut_ptr()) };
+    unsafe { uninit.assume_init() }
+}
+
+#[inline(always)]
+pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
+    // TODO: crc_flag and hist_bits setting
+    // TODO: crc check
+    // TODO: Multiple streams
+    let mut zst = new_inflate_state(isal::isal_inflate_init);
+    let mut gz_hdr = isal::isal_gzip_header::default();
+    unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
+
+    zst.avail_in = input.len() as _;
+    zst.next_in = input.as_ptr() as *mut _;
+    zst.crc_flag = 0;
+
+    // Start each stream by reading the gzip header
+    assert_eq!(
+        unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) },
+        0
+    );
+
+    let mut buf = vec![];
+    let mut n_bytes = 0;
+    while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+        buf.resize(buf.len() + BUF_SIZE, 0);
+        zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+        zst.avail_out = BUF_SIZE as _;
+
+        // TODO: proper error
+        debug_assert_eq!(unsafe { isal::isal_inflate(&mut zst as *mut _) }, 0);
+
+        n_bytes += BUF_SIZE - zst.avail_out as usize;
+        if zst.avail_out == 0 {
+            break;
+        }
+    }
+    buf.truncate(n_bytes);
+    Ok(buf)
+}
+
 /// Combine error handling for both isal_deflate/_stateless functions
 #[inline(always)]
 fn isal_deflate_core(
@@ -232,38 +279,60 @@ enum MemLevel {
 #[cfg(test)]
 mod tests {
 
-    use std::{fs, io::Cursor};
+    use std::fs;
 
     use super::*;
 
-    fn get_data() -> Vec<u8> {
+    fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
         fs::read(format!(
             "{}/../../pyrus-cramjam/benchmarks/data/html_x_4",
             env!("CARGO_MANIFEST_DIR")
         ))
-        .unwrap()
     }
 
     #[test]
-    fn basic_compress_into() {
-        let data = get_data();
+    fn basic_compress_into() -> Result<()> {
+        let data = get_data()?;
         let mut output = vec![0_u8; data.len()]; // assume compression isn't worse than input len.
-        let n_bytes = compress_into(data.as_slice(), &mut output, 3, true).unwrap();
+        let n_bytes = compress_into(data.as_slice(), &mut output, 3, true)?;
         println!(
             "n_bytes: {} - {:?}",
             n_bytes,
             &output[..std::cmp::min(output.len() - 1, 100)]
         );
+        Ok(())
     }
 
     #[test]
-    fn basic_compress() {
-        let data = get_data();
-        let output = compress(&data, CompressionLevel::Three, true).unwrap();
+    fn basic_compress() -> Result<()> {
+        let data = get_data()?;
+        let output = compress(&data, CompressionLevel::Three, true)?;
         dbg!(output.len());
         println!(
             "n_bytes: {:?}",
             &output[..std::cmp::min(output.len() - 1, 100)]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn basic_decompress() -> Result<()> {
+        // compressed b"hello, world!"
+        let compressed = vec![
+            31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
+            73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
+        ];
+        let decompressed = decompress(&compressed)?;
+        assert_eq!(decompressed, b"hello, world!");
+        Ok(())
+    }
+
+    #[test]
+    fn basic_round_trip() -> Result<()> {
+        let data = b"hello, world!";
+        let compressed = compress(data, CompressionLevel::Three, true)?;
+        let decompressed = decompress(&compressed)?;
+        assert_eq!(decompressed, data);
+        Ok(())
     }
 }

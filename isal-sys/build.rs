@@ -18,6 +18,7 @@ fn main() -> Result<()> {
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
         //.clang_arg(format!("-I{}", include.display()))
+        .derive_default(true)
         .clang_arg("-fPIC")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()?;
