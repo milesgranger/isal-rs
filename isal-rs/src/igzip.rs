@@ -332,6 +332,16 @@ mod tests {
     }
 
     #[test]
+    fn larger_decompress() -> Result<()> {
+        /* Decompress data which is larger than BUF_SIZE */
+        let data = get_data()?;
+        let compressed = compress(&data, CompressionLevel::Three, true)?;
+        let decompressed = decompress(&compressed)?;
+        assert_eq!(decompressed, data);
+        Ok(())
+    }
+
+    #[test]
     fn basic_decompress_multi_stream() -> Result<()> {
         // compressed b"hello, world!" * 2
         let mut compressed = vec![
