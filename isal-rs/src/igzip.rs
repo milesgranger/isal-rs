@@ -212,28 +212,36 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     zst.next_in = input.as_ptr() as *mut _;
     zst.crc_flag = 0;
 
-    // Start each stream by reading the gzip header
-    assert_eq!(
-        unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) },
-        0
-    );
-
     let mut buf = vec![];
     let mut n_bytes = 0;
-    while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
-        buf.resize(buf.len() + BUF_SIZE, 0);
-        zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-        zst.avail_out = BUF_SIZE as _;
+    loop {
+        // Start each stream by reading the gzip header
+        let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
+        debug_assert_eq!(ret, 0);
 
-        // TODO: proper error
-        debug_assert_eq!(unsafe { isal::isal_inflate(&mut zst as *mut _) }, 0);
+        while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+            buf.resize(buf.len() + BUF_SIZE, 0);
+            zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+            zst.avail_out = BUF_SIZE as _;
 
-        n_bytes += BUF_SIZE - zst.avail_out as usize;
-        if zst.avail_out == 0 {
+            // TODO: proper error
+            debug_assert_eq!(unsafe { isal::isal_inflate(&mut zst as *mut _) }, 0);
+
+            n_bytes += BUF_SIZE - zst.avail_out as usize;
+            if zst.avail_out == 0 {
+                break;
+            }
+        }
+
+        // TODO: crc and length checks for last two bytes; skipping for now.
+        if zst.avail_in > 2 {
+            zst.avail_in -= 2;
+            zst.next_in = unsafe { zst.next_in.add(2) };
+            unsafe { isal::isal_inflate_reset(&mut zst as *mut _) };
+        } else {
             break;
         }
     }
-    dbg!(zst.avail_in);
     buf.truncate(n_bytes);
     Ok(buf)
 }
@@ -331,6 +339,7 @@ mod tests {
             73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
         ];
         compressed.extend(compressed.clone());
+
         let decompressed = decompress(&compressed)?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
