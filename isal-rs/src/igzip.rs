@@ -1,4 +1,5 @@
-#![allow(dead_code, unused_imports, unused_variables)] // TODO
+#![allow(dead_code, unused_imports, unused_variables)]
+// TODO
 use std::io::{self, Read, Write};
 use std::mem;
 use std::os::raw::c_int;
@@ -206,20 +207,26 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     // TODO: Multiple streams
     let mut zst = new_inflate_state(isal::isal_inflate_init);
     let mut gz_hdr = isal::isal_gzip_header::default();
+    let mut gz_extra = [0; 32];
+    gz_hdr.extra = gz_extra.as_mut_ptr();
+    gz_hdr.extra_buf_len = gz_extra.len() as _;
     unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
 
     zst.avail_in = input.len() as _;
     zst.next_in = input.as_ptr() as *mut _;
     zst.crc_flag = 0;
 
+    let mut dict = [0; 64];
+    debug_assert_eq!(unsafe { isal::isal_inflate_set_dict(&mut zst as *mut _, dict.as_mut_ptr(), dict.len() as _) }, 0);
+
     let mut buf = vec![];
     let mut n_bytes = 0;
-    loop {
-        // Start each stream by reading the gzip header
-        let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
-        debug_assert_eq!(ret, 0);
 
-        while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+    let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
+    debug_assert_eq!(ret, 0);
+
+    loop {
+        loop {
             buf.resize(buf.len() + BUF_SIZE, 0);
             zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
             zst.avail_out = BUF_SIZE as _;
@@ -228,21 +235,23 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
             debug_assert_eq!(unsafe { isal::isal_inflate(&mut zst as *mut _) }, 0);
 
             n_bytes += BUF_SIZE - zst.avail_out as usize;
-            if zst.avail_out == 0 {
+            if zst.avail_out != 0 {
                 break;
             }
         }
 
-        // TODO: crc and length checks for last two bytes; skipping for now.
-        if zst.avail_in > 2 {
-            zst.avail_in -= 2;
-            zst.next_in = unsafe { zst.next_in.add(2) };
-            unsafe { isal::isal_inflate_reset(&mut zst as *mut _) };
-        } else {
+        if zst.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
             break;
         }
     }
+    
     buf.truncate(n_bytes);
+    
+    // TODO: properly deal with crc and length bytes.
+    if zst.avail_in > 2 {
+        buf.extend(decompress(&input[input.len() - (zst.avail_in - 2) as usize..])?);
+    }
+    
     Ok(buf)
 }
 
@@ -284,12 +293,17 @@ enum MemLevel {
 mod tests {
 
     use std::fs;
+    use md5;
 
     use super::*;
 
+    fn same_same(a: &[u8], b: &[u8]) -> bool {
+        md5::compute(a) == md5::compute(b)
+    }
+
     fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
         fs::read(format!(
-            "{}/../../pyrus-cramjam/benchmarks/data/html_x_4",
+            "{}/../../pyrus-cramjam/benchmarks/data/html",
             env!("CARGO_MANIFEST_DIR")
         ))
     }
@@ -328,6 +342,16 @@ mod tests {
         ];
         let decompressed = decompress(&compressed)?;
         assert_eq!(decompressed, b"hello, world!");
+        Ok(())
+    }
+
+    #[test]
+    fn larger_decompress() -> Result<()> {
+        /* Decompress data which is larger than BUF_SIZE */
+        let data = get_data()?;
+        let compressed = compress(&data, CompressionLevel::Three, true)?;
+        let decompressed = decompress(&compressed)?;
+        assert!(same_same(&data, &decompressed));
         Ok(())
     }
 
