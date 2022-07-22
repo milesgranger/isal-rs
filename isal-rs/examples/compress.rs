@@ -9,9 +9,8 @@ fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
     ))
 }
 
-
 fn main() {
-    let data = get_data().unwrap();    
+    let data = get_data().unwrap();
     for _ in 0..1000 {
         let _v = igzip::compress(&data, igzip::CompressionLevel::Three, true).unwrap();
     }
