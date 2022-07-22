@@ -205,52 +205,38 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     // TODO: crc_flag and hist_bits setting
     // TODO: crc check
     // TODO: Multiple streams
-    let mut zst = new_inflate_state(isal::isal_inflate_init);
-    let mut gz_hdr = isal::isal_gzip_header::default();
-    //let mut gz_extra = [0; 32];
-    //gz_hdr.extra = gz_extra.as_mut_ptr();
-    //gz_hdr.extra_buf_len = gz_extra.len() as _;
-    unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
 
+    let mut zst = new_inflate_state(isal::isal_inflate_init);
     zst.avail_in = input.len() as _;
     zst.next_in = input.as_ptr() as *mut _;
     zst.crc_flag = 0;
 
-    //let mut dict = [0; 64];
-    //unsafe { isal::isal_inflate_set_dict(&mut zst as *mut _, dict.as_mut_ptr(), dict.len() as _) };
-
-    let mut buf = vec![];
-    let mut n_bytes = 0;
-
+    let mut gz_hdr = isal::isal_gzip_header::default();
+    unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
     let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
 
-    loop {
-        loop {
-            buf.resize(buf.len() + BUF_SIZE, 0);
-            zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-            zst.avail_out = BUF_SIZE as _;
+    let mut buf = Vec::with_capacity(BUF_SIZE);
+    let mut n_bytes = 0;
 
-            // TODO: proper error
-            unsafe { isal::isal_inflate(&mut zst as *mut _) };
+    while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+        buf.resize(buf.len() + BUF_SIZE, 0);
+        zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+        zst.avail_out = BUF_SIZE as _;
 
-            n_bytes += BUF_SIZE - zst.avail_out as usize;
-            if zst.avail_out != 0 {
-                break;
-            }
-        }
+        // TODO: proper error
+        unsafe { isal::isal_inflate(&mut zst as *mut _) };
 
-        if zst.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
-            break;
-        }
+        n_bytes += BUF_SIZE - zst.avail_out as usize;
     }
-    
     buf.truncate(n_bytes);
-    
+
     // TODO: properly deal with crc and length bytes.
-    if zst.avail_in > 2 {
-        buf.extend(decompress(&input[input.len() - (zst.avail_in - 2) as usize..])?);
+    if zst.avail_in > 2 && zst.avail_in != 3 {
+        buf.extend(decompress(
+            &input[input.len() - (zst.avail_in - 2) as usize..],
+        )?);
     }
-    
+
     Ok(buf)
 }
 
@@ -291,8 +277,8 @@ enum MemLevel {
 #[cfg(test)]
 mod tests {
 
-    use std::fs;
     use md5;
+    use std::fs;
 
     use super::*;
 
