@@ -245,13 +245,12 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
 
         // TODO: crc and length checks for last two bytes; skipping for now.
         if zst.avail_in > 2 {
+            zst.avail_in -= 2;
+            zst.next_in = unsafe { zst.next_in.add(2) };
+
             let ret = unsafe { isal::isal_read_zlib_header(&mut zst as *mut _, &mut zlib_hdr as *mut _) };
             debug_assert_eq!(ret, 0);
-            //zst.avail_in -= 8;
-            //zst.next_in = unsafe { zst.next_in.add(8) };
-            //zst.block_state = isal::isal_block_state_ISAL_BLOCK_NEW_HDR;
-            //zst.crc_flag = 0;
-            //unsafe { isal::isal_inflate_reset(&mut zst as *mut _) };
+            
         } else {
             break;
         }
