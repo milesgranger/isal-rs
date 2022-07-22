@@ -233,6 +233,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
             break;
         }
     }
+    dbg!(zst.avail_in);
     buf.truncate(n_bytes);
     Ok(buf)
 }
@@ -319,6 +320,19 @@ mod tests {
         ];
         let decompressed = decompress(&compressed)?;
         assert_eq!(decompressed, b"hello, world!");
+        Ok(())
+    }
+
+    #[test]
+    fn basic_decompress_multi_stream() -> Result<()> {
+        // compressed b"hello, world!" * 2
+        let mut compressed = vec![
+            31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
+            73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
+        ];
+        compressed.extend(compressed.clone());
+        let decompressed = decompress(&compressed)?;
+        assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
     }
 
