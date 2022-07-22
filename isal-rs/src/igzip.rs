@@ -1,4 +1,5 @@
-#![allow(dead_code, unused_imports, unused_variables)] // TODO
+#![allow(dead_code, unused_imports, unused_variables)]
+// TODO
 use std::io::{self, Read, Write};
 use std::mem;
 use std::os::raw::c_int;
@@ -224,12 +225,8 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
     debug_assert_eq!(ret, 0);
 
-    let mut zlib_hdr = isal::isal_zlib_header::default();
-
     loop {
-        dbg!("-------------", zst.block_state, zst.avail_in);
-
-        while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+        loop {
             buf.resize(buf.len() + BUF_SIZE, 0);
             zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
             zst.avail_out = BUF_SIZE as _;
@@ -238,25 +235,23 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
             debug_assert_eq!(unsafe { isal::isal_inflate(&mut zst as *mut _) }, 0);
 
             n_bytes += BUF_SIZE - zst.avail_out as usize;
-            if zst.avail_out == 0 {
+            if zst.avail_out != 0 {
                 break;
             }
         }
 
-        // TODO: crc and length checks for last two bytes; skipping for now.
-        if zst.avail_in > 2 {
-            zst.avail_in -= 2;
-            zst.next_in = unsafe { zst.next_in.add(2) };
-
-            let ret = unsafe { isal::isal_read_zlib_header(&mut zst as *mut _, &mut zlib_hdr as *mut _) };
-            debug_assert_eq!(ret, 0);
-            
-        } else {
+        if zst.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
             break;
         }
     }
-    dbg!(zst.avail_in);
+    
     buf.truncate(n_bytes);
+    
+    // TODO: properly deal with crc and length bytes.
+    if zst.avail_in > 2 {
+        buf.extend(decompress(&input[input.len() - (zst.avail_in - 2) as usize..])?);
+    }
+    
     Ok(buf)
 }
 
@@ -308,7 +303,7 @@ mod tests {
 
     fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
         fs::read(format!(
-            "{}/../../pyrus-cramjam/benchmarks/data/html_x_4",
+            "{}/../../pyrus-cramjam/benchmarks/data/html",
             env!("CARGO_MANIFEST_DIR")
         ))
     }
