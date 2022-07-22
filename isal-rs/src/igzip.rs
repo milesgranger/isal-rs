@@ -207,23 +207,22 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     // TODO: Multiple streams
     let mut zst = new_inflate_state(isal::isal_inflate_init);
     let mut gz_hdr = isal::isal_gzip_header::default();
-    let mut gz_extra = [0; 32];
-    gz_hdr.extra = gz_extra.as_mut_ptr();
-    gz_hdr.extra_buf_len = gz_extra.len() as _;
+    //let mut gz_extra = [0; 32];
+    //gz_hdr.extra = gz_extra.as_mut_ptr();
+    //gz_hdr.extra_buf_len = gz_extra.len() as _;
     unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
 
     zst.avail_in = input.len() as _;
     zst.next_in = input.as_ptr() as *mut _;
     zst.crc_flag = 0;
 
-    let mut dict = [0; 64];
-    debug_assert_eq!(unsafe { isal::isal_inflate_set_dict(&mut zst as *mut _, dict.as_mut_ptr(), dict.len() as _) }, 0);
+    //let mut dict = [0; 64];
+    //unsafe { isal::isal_inflate_set_dict(&mut zst as *mut _, dict.as_mut_ptr(), dict.len() as _) };
 
     let mut buf = vec![];
     let mut n_bytes = 0;
 
     let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
-    debug_assert_eq!(ret, 0);
 
     loop {
         loop {
@@ -232,7 +231,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
             zst.avail_out = BUF_SIZE as _;
 
             // TODO: proper error
-            debug_assert_eq!(unsafe { isal::isal_inflate(&mut zst as *mut _) }, 0);
+            unsafe { isal::isal_inflate(&mut zst as *mut _) };
 
             n_bytes += BUF_SIZE - zst.avail_out as usize;
             if zst.avail_out != 0 {
@@ -303,7 +302,7 @@ mod tests {
 
     fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
         fs::read(format!(
-            "{}/../../pyrus-cramjam/benchmarks/data/html",
+            "{}/../../pyrus-cramjam/benchmarks/data/fireworks.jpeg",
             env!("CARGO_MANIFEST_DIR")
         ))
     }
