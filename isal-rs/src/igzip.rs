@@ -215,12 +215,9 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     let mut buf = vec![];
     let mut n_bytes = 0;
     loop {
-        dbg!(zst.avail_in);
         // Start each stream by reading the gzip header
-        assert_eq!(
-            unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) },
-            0
-        );
+        let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
+        debug_assert_eq!(ret, 0);
 
         while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
             buf.resize(buf.len() + BUF_SIZE, 0);
@@ -245,8 +242,6 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
             break;
         }
     }
-
-    dbg!(zst.avail_in);
     buf.truncate(n_bytes);
     Ok(buf)
 }
@@ -344,7 +339,7 @@ mod tests {
             73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
         ];
         compressed.extend(compressed.clone());
-        
+
         let decompressed = decompress(&compressed)?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
