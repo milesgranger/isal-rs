@@ -209,7 +209,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     let mut zst = new_inflate_state(isal::isal_inflate_init);
     zst.avail_in = input.len() as _;
     zst.next_in = input.as_ptr() as *mut _;
-    zst.crc_flag = 0;
+    zst.crc_flag = 1;
 
     let mut gz_hdr = isal::isal_gzip_header::default();
     unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
@@ -229,13 +229,6 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
         n_bytes += BUF_SIZE - zst.avail_out as usize;
     }
     buf.truncate(n_bytes);
-
-    // TODO: properly deal with crc and length bytes.
-    if zst.avail_in > 2 && zst.avail_in != 3 {
-        buf.extend(decompress(
-            &input[input.len() - (zst.avail_in - 2) as usize..],
-        )?);
-    }
 
     Ok(buf)
 }
