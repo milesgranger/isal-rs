@@ -213,7 +213,10 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     let mut n_bytes = 0;
 
     while zst.avail_in != 0 {
-        zst.block_state = isal::isal_zstate_state_ZSTATE_NEW_HDR;
+        // Ensure reset for next member (if exists; not on first iteration)
+        if n_bytes > 0 {
+            unsafe { isal::isal_inflate_reset(&mut zst as *mut _) };
+        }
 
         // Read this member's gzip header
         let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
@@ -337,7 +340,6 @@ mod tests {
     fn basic_compress() -> Result<()> {
         let data = get_data()?;
         let output = compress(&data, CompressionLevel::Three, true)?;
-        dbg!(output.len());
         println!(
             "n_bytes: {:?}",
             &output[..std::cmp::min(output.len() - 1, 100)]
