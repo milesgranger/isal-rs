@@ -127,7 +127,12 @@ pub(crate) fn new_zstream(
 
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
 #[inline(always)]
-pub fn compress_into(input: &[u8], output: &mut [u8], level: u8, is_gzip: bool) -> Result<usize> {
+pub fn compress_into(
+    input: &[u8],
+    output: &mut [u8],
+    level: CompressionLevel,
+    is_gzip: bool,
+) -> Result<usize> {
     let mut zstream = new_zstream(isal::isal_deflate_stateless_init);
 
     zstream.flush = isal::NO_FLUSH as _;
@@ -238,6 +243,21 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+#[inline(always)]
+pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize> {
+    let mut zst = new_inflate_state(isal::isal_inflate_init);
+    zst.avail_in = input.len() as _;
+    zst.next_in = input.as_ptr() as *mut _;
+    zst.crc_flag = 1;
+
+    zst.avail_out = output.len() as _;
+    zst.next_out = output.as_mut_ptr();
+
+    isal_inflate_core(&mut zst, isal::isal_inflate_stateless)?;
+
+    Ok(zst.total_out as _)
+}
+
 /// Combine error handling for both isal_deflate/_stateless functions
 #[inline(always)]
 fn isal_inflate_core(
@@ -250,17 +270,22 @@ fn isal_inflate_core(
     if ret as u32 == isal::ISAL_DECOMP_OK {
         Ok(())
     } else {
-        // isal::ISAL_NEED_DICT is a u32 unlike other i32 err defs
+        // isal error codes that at u32 unlike other i32 err defs
         const NEED_DICT: i32 = isal::ISAL_NEED_DICT as i32;
+        const END_INPUT: i32 = isal::ISAL_END_INPUT as i32;
+        const OUT_OVERFLOW: i32 = isal::ISAL_OUT_OVERFLOW as i32;
 
         let err = match ret {
-            isal::ISAL_INVALID_BLOCK => Error::InvalidBlock,
+            END_INPUT => Error::EndInput,
             NEED_DICT => Error::NeedDict,
+            OUT_OVERFLOW => Error::OutOverflow,
             isal::ISAL_INVALID_SYMBOL => Error::InvalidSymbol,
             isal::ISAL_INVALID_LOOKBACK => Error::InvalidLookBack,
             isal::ISAL_INVALID_WRAPPER => Error::InvalidWrapper,
             isal::ISAL_UNSUPPORTED_METHOD => Error::UnsupportedMethod,
             isal::ISAL_INCORRECT_CHECKSUM => Error::IncorrectChecksum,
+            isal::STATELESS_OVERFLOW => Error::StatelessOverflow,
+
             _ => Error::Other((
                 Some(ret as _),
                 "inflate call failed, unaccounted for exit code.".to_string(),
@@ -330,7 +355,7 @@ mod tests {
     fn basic_compress_into() -> Result<()> {
         let data = get_data()?;
         let mut output = vec![0_u8; data.len()]; // assume compression isn't worse than input len.
-        let n_bytes = compress_into(data.as_slice(), &mut output, 3, true)?;
+        let n_bytes = compress_into(data.as_slice(), &mut output, CompressionLevel::Three, true)?;
         println!(
             "n_bytes: {} - {:?}",
             n_bytes,
@@ -359,6 +384,20 @@ mod tests {
         ];
         let decompressed = decompress(&compressed)?;
         assert_eq!(decompressed, b"hello, world!");
+        Ok(())
+    }
+
+    #[test]
+    fn basic_decompress_into() -> Result<()> {
+        // compressed b"hello, world!"
+        let compressed = vec![
+            31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
+            73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
+        ];
+        let mut decompressed = b"world!, hello".to_vec(); // same len, wrong data
+        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        assert_eq!(n_bytes, decompressed.len());
+        assert_eq!(&decompressed, b"hello, world!");
         Ok(())
     }
 
@@ -392,6 +431,29 @@ mod tests {
         let compressed = compress(data, CompressionLevel::Three, true)?;
         let decompressed = decompress(&compressed)?;
         assert_eq!(decompressed, data);
+        Ok(())
+    }
+
+    #[test]
+    fn basic_round_trip_into() -> Result<()> {
+        let data = b"hello, world!".to_vec();
+
+        let compressed_len = compress(&data, CompressionLevel::Three, true)?.len();
+        let decompressed_len = data.len();
+
+        let mut compressed = vec![0; compressed_len];
+        let mut decompressed = vec![0; decompressed_len];
+
+        // compress_into
+        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
+        assert_eq!(n_bytes, compressed_len);
+
+        // decompress_into
+        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        assert_eq!(n_bytes, decompressed_len);
+
+        // round trip output matches original input
+        assert!(same_same(&data, &decompressed));
         Ok(())
     }
 }
