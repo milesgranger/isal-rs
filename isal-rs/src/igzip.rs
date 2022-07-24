@@ -224,8 +224,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
             zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
             zst.avail_out = BUF_SIZE as _;
 
-            // TODO: proper error
-            unsafe { isal::isal_inflate(&mut zst as *mut _) };
+            isal_inflate_core(&mut zst, isal::isal_inflate)?;
 
             n_bytes += BUF_SIZE - zst.avail_out as usize;
         }
@@ -234,6 +233,35 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     buf.truncate(n_bytes);
 
     Ok(buf)
+}
+
+/// Combine error handling for both isal_deflate/_stateless functions
+#[inline(always)]
+fn isal_inflate_core(
+    zst: &mut isal::inflate_state,
+    op: unsafe extern "C" fn(*mut isal::inflate_state) -> c_int,
+) -> Result<()> {
+    let ret = unsafe { op(zst as *mut _) };
+
+    // TODO? Awkward, COMP_OK is u32, and other variants are i32
+    if ret as u32 == isal::ISAL_DECOMP_OK {
+        Ok(())
+    } else {
+        let err = match ret {
+            isal::ISAL_INVALID_BLOCK => Error::InvalidBlock,
+            6 => Error::NeedDict, // isal::ISAL_NEED_DICT is a u32 unlike other i32 err defs
+            isal::ISAL_INVALID_SYMBOL => Error::InvalidSymbol,
+            isal::ISAL_INVALID_LOOKBACK => Error::InvalidLookBack,
+            isal::ISAL_INVALID_WRAPPER => Error::InvalidWrapper,
+            isal::ISAL_UNSUPPORTED_METHOD => Error::UnsupportedMethod,
+            isal::ISAL_INCORRECT_CHECKSUM => Error::IncorrectChecksum,
+            _ => Error::Other((
+                Some(ret as _),
+                "deflate call failed, unaccounted for exit code.".to_string(),
+            )),
+        };
+        Err(err)
+    }
 }
 
 /// Combine error handling for both isal_deflate/_stateless functions
