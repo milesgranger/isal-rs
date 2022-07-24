@@ -10,7 +10,7 @@ pub enum Error {
     InvalidFlush,
     InvalidLevel,
     InvalidLevelBuf,
-    StatelessOverflow,
+    StatelessOverflow, // output buffer not large enough.
 
     // isal decompression errors
     InvalidBlock,
@@ -20,6 +20,8 @@ pub enum Error {
     InvalidWrapper,
     UnsupportedMethod,
     IncorrectChecksum,
+    EndInput,
+    OutOverflow, // if output buffer was not large enough
 
     // Anything else not covered, exit code, message
     Other((Option<isize>, String)),
