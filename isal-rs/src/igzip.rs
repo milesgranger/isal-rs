@@ -250,9 +250,12 @@ fn isal_inflate_core(
     if ret as u32 == isal::ISAL_DECOMP_OK {
         Ok(())
     } else {
+        // isal::ISAL_NEED_DICT is a u32 unlike other i32 err defs
+        const NEED_DICT: i32 = isal::ISAL_NEED_DICT as i32;
+
         let err = match ret {
             isal::ISAL_INVALID_BLOCK => Error::InvalidBlock,
-            6 => Error::NeedDict, // isal::ISAL_NEED_DICT is a u32 unlike other i32 err defs
+            NEED_DICT => Error::NeedDict,
             isal::ISAL_INVALID_SYMBOL => Error::InvalidSymbol,
             isal::ISAL_INVALID_LOOKBACK => Error::InvalidLookBack,
             isal::ISAL_INVALID_WRAPPER => Error::InvalidWrapper,
@@ -260,7 +263,7 @@ fn isal_inflate_core(
             isal::ISAL_INCORRECT_CHECKSUM => Error::IncorrectChecksum,
             _ => Error::Other((
                 Some(ret as _),
-                "deflate call failed, unaccounted for exit code.".to_string(),
+                "inflate call failed, unaccounted for exit code.".to_string(),
             )),
         };
         Err(err)
