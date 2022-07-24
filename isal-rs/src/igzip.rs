@@ -4,8 +4,8 @@ use std::io::{self, Read, Write};
 use std::mem;
 use std::os::raw::c_int;
 
-use isal_sys as isal;
 use crate::error::{Error, Result};
+use isal_sys as isal;
 
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
@@ -201,10 +201,6 @@ pub(crate) fn new_inflate_state(
 
 #[inline(always)]
 pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
-    // TODO: crc_flag and hist_bits setting
-    // TODO: crc check
-    // TODO: Multiple streams
-
     let mut zst = new_inflate_state(isal::isal_inflate_init);
     zst.avail_in = input.len() as _;
     zst.next_in = input.as_ptr() as *mut _;
@@ -212,21 +208,29 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
 
     let mut gz_hdr = isal::isal_gzip_header::default();
     unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
-    let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
 
     let mut buf = Vec::with_capacity(BUF_SIZE);
     let mut n_bytes = 0;
-    
-    while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
-        buf.resize(buf.len() + BUF_SIZE, 0);
-        zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-        zst.avail_out = BUF_SIZE as _;
 
-        // TODO: proper error
-        unsafe { isal::isal_inflate(&mut zst as *mut _) };
+    while zst.avail_in != 0 {
+        zst.block_state = isal::isal_zstate_state_ZSTATE_NEW_HDR;
 
-        n_bytes += BUF_SIZE - zst.avail_out as usize;
+        // Read this member's gzip header
+        let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
+
+        // decompress member
+        while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+            buf.resize(buf.len() + BUF_SIZE, 0);
+            zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+            zst.avail_out = BUF_SIZE as _;
+
+            // TODO: proper error
+            unsafe { isal::isal_inflate(&mut zst as *mut _) };
+
+            n_bytes += BUF_SIZE - zst.avail_out as usize;
+        }
     }
+
     buf.truncate(n_bytes);
 
     Ok(buf)
@@ -249,7 +253,10 @@ fn isal_deflate_core(
             isal::ISAL_INVALID_LEVEL => Error::InvalidLevel,
             isal::ISAL_INVALID_LEVEL_BUF => Error::InvalidLevelBuf,
             isal::STATELESS_OVERFLOW => Error::StatelessOverflow,
-            _ => Error::Other((Some(ret as _), "deflate call failed, unaccounted for exit code.".to_string())),
+            _ => Error::Other((
+                Some(ret as _),
+                "deflate call failed, unaccounted for exit code.".to_string(),
+            )),
         };
         Err(err)
     }
