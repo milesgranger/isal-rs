@@ -5,12 +5,10 @@ use std::mem;
 use std::os::raw::c_int;
 
 use isal_sys as isal;
+use crate::error::{Error, Result};
 
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
-
-/// Result type
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub mod read {
 
@@ -150,7 +148,8 @@ pub fn compress_into(input: &[u8], output: &mut [u8], level: u8, is_gzip: bool) 
     zstream.avail_out = output.len() as _;
     zstream.next_out = output.as_mut_ptr();
 
-    isal_deflate_core(&mut zstream, isal::isal_deflate_stateless)
+    isal_deflate_core(&mut zstream, isal::isal_deflate_stateless)?;
+    Ok(zstream.total_out as _)
 }
 
 /// Compress `input`
@@ -183,7 +182,7 @@ pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<
         zstream.avail_out = BUF_SIZE as _;
         zstream.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
 
-        unsafe { isal::isal_deflate(&mut zstream as *mut _) };
+        isal_deflate_core(&mut zstream, isal::isal_deflate)?;
 
         n_bytes += BUF_SIZE - zstream.avail_out as usize;
     }
@@ -217,7 +216,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
 
     let mut buf = Vec::with_capacity(BUF_SIZE);
     let mut n_bytes = 0;
-
+    
     while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
         buf.resize(buf.len() + BUF_SIZE, 0);
         zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
@@ -238,21 +237,21 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
 fn isal_deflate_core(
     zstream: &mut isal::isal_zstream,
     op: unsafe extern "C" fn(*mut isal::isal_zstream) -> c_int,
-) -> Result<usize> {
+) -> Result<()> {
     let ret = unsafe { op(zstream as *mut _) };
-    debug_assert!(zstream.avail_in == 0);
 
     // TODO? Awkward, COMP_OK is u32, and other variants are i32
     if ret as u32 == isal::COMP_OK {
-        Ok(zstream.total_out as _)
+        Ok(())
     } else {
-        match ret {
-            isal::INVALID_FLUSH => todo!(),
-            isal::ISAL_INVALID_LEVEL => todo!(),
-            isal::ISAL_INVALID_LEVEL_BUF => todo!(),
-            isal::STATELESS_OVERFLOW => todo!(),
-            _ => unreachable!("Unaccounted for error from isal_deflate"),
-        }
+        let err = match ret {
+            isal::INVALID_FLUSH => Error::InvalidFlush,
+            isal::ISAL_INVALID_LEVEL => Error::InvalidLevel,
+            isal::ISAL_INVALID_LEVEL_BUF => Error::InvalidLevelBuf,
+            isal::STATELESS_OVERFLOW => Error::StatelessOverflow,
+            _ => Error::Other((Some(ret as _), "deflate call failed, unaccounted for exit code.".to_string())),
+        };
+        Err(err)
     }
 }
 
