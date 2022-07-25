@@ -7,10 +7,13 @@ edition = "2021"
 [dependencies]
 isal-sys = { path = "./../isal-sys" }
 
-
 [dev-dependencies]
 criterion = "0.3"
 md5 = "0.7.0"
+
+[build-dependencies]
+bindgen = "^0.60"
+cc = "^1"
 
 [[bench]]
 name = "igzip"

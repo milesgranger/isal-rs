@@ -10,3 +10,5 @@
 ### Versioning: 
 Versions are specified in normal SemVer format, and a trailing "`+<< commit hash >>`" to indicate
 which commit in [isa-l](https://github.com/intel/isa-l) the crate is built against. ie: `0.1.0+62519d9`
+
+make lib -f Makefile.unx host_cpu=x86_64-linux-gnu CC="$CC -target x86_64-linux-gnu" AR="zig ar" LDFLAGS=-static

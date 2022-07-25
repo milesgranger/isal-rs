@@ -1,25 +1,29 @@
-#![allow(dead_code)] // TODO
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() -> Result<()> {
-    let _include = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/include");
-    let lib_name = "isal"; //compile(&include)?;
+    // TODO: make lib -f Makefile.unx host_cpu=x86_64-linux-musl CC="$CC -target x86_64-linux-musl" AR="zig ar" LDFLAGS=-static
+    // then copy 'bin/isa-l.a' -> 'bin/libisa-l.a'
 
+    let include = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/include");
     let out_dir = env::var("OUT_DIR")?;
+    let search_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/bin");
 
-    //println!("cargo:rustc-link-search={}", out_dir);
-    println!("cargo:rustc-link-lib={}", lib_name);
+    println!("cargo:rustc-link-search=native={}", search_dir.display());
+    println!("cargo:rustc-link-lib=isal");
+    println!("cargo:rustc-link-lib=static=isa-l");
+
     println!("cargo:rerun-if-changed=wrapper.h");
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        //.clang_arg(format!("-I{}", include.display()))
+        .clang_arg(format!("-I{}", include.display()))
+        .clang_arg(format!("-L{}", search_dir.display()))
+        .clang_arg("-lisal")
+        .clang_arg("-lisa-l")
         .derive_default(true)
-        .clang_arg("-fPIC")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()?;
 
@@ -28,38 +32,4 @@ fn main() -> Result<()> {
     bindings.write_to_file(out_path)?;
 
     Ok(())
-}
-
-// Compile into static lib
-fn compile(include: &PathBuf) -> Result<&'static str> {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("isa-l/igzip");
-
-    // deps
-    let deps = fs::read_dir(&src)
-        .unwrap()
-        .into_iter()
-        .map(|f| f.unwrap())
-        .filter(|f| {
-            let file_name = f.file_name();
-            let name = file_name.to_str().unwrap();
-            name.ends_with(".c")
-                && !name.contains("perf")
-                && !name.contains("test")
-                && !name.contains("example")
-                && !name.contains("generate")
-        })
-        .map(|f| f.path());
-
-    cc::Build::new()
-        .compiler(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("zcc"))
-        .files(deps)
-        .include(&include)
-        .cpp(false)
-        .shared_flag(false)
-        .static_flag(true)
-        .flag("-g")
-        .flag("-s")
-        .compile("igzip");
-
-    Ok("igzip")
 }
