@@ -8,6 +8,17 @@ use isal_sys as isal;
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
 
+
+/// Flush Flags
+#[derive(Copy, Clone)]
+#[repr(u32)]
+pub enum FlushFlags {
+    NoFlush = isal::NO_FLUSH,
+    SyncFlush = isal::SYNC_FLUSH,
+    FullFlush = isal::FULL_FLUSH,
+}
+
+
 pub mod read {
 
     use super::*;
@@ -57,7 +68,7 @@ pub mod read {
             let mut zstream = new_zstream(isal::isal_deflate_init);
 
             zstream.end_of_stream = 0;
-            zstream.flush = isal::SYNC_FLUSH as _;
+            zstream.flush = FlushFlags::SyncFlush as _;
             zstream.level = level as _;
             zstream.gzip_flag = is_gzip as _;
 
@@ -210,7 +221,7 @@ pub fn compress_into(
 ) -> Result<usize> {
     let mut zstream = new_zstream(isal::isal_deflate_stateless_init);
 
-    zstream.flush = isal::NO_FLUSH as _;
+    zstream.flush = FlushFlags::NoFlush as _;
     zstream.level = level as _;
     zstream.gzip_flag = is_gzip as _;
     zstream.end_of_stream = 1;
@@ -238,7 +249,7 @@ pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<
     let mut zstream = new_zstream(isal::isal_deflate_init);
 
     zstream.end_of_stream = 1;
-    zstream.flush = isal::NO_FLUSH as _;
+    zstream.flush = FlushFlags::NoFlush as _;
 
     zstream.level = level as _;
     zstream.gzip_flag = is_gzip as _;
