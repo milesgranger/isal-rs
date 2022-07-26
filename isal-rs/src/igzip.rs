@@ -10,6 +10,7 @@ pub const BUF_SIZE: usize = 16 * 1024;
 
 /// Flush Flags
 #[derive(Copy, Clone)]
+#[repr(i8)]
 pub enum FlushFlags {
     NoFlush = isal::NO_FLUSH as _,
     SyncFlush = isal::SYNC_FLUSH as _,
@@ -18,6 +19,7 @@ pub enum FlushFlags {
 
 /// Compression return values
 #[derive(Copy, Clone, Debug)]
+#[repr(i8)]
 pub enum CompressionReturnValues {
     CompOk = isal::COMP_OK as _,
     InvalidFlush = isal::INVALID_FLUSH as _,
@@ -32,6 +34,7 @@ pub enum CompressionReturnValues {
 impl TryFrom<isize> for CompressionReturnValues {
     type Error = Error;
 
+    #[inline]
     fn try_from(value: isize) -> Result<Self> {
         match value {
             v if v == CompressionReturnValues::CompOk as _ => Ok(CompressionReturnValues::CompOk),
@@ -66,6 +69,7 @@ impl TryFrom<isize> for CompressionReturnValues {
 
 /// Decompression return values
 #[derive(Copy, Clone, Debug)]
+#[repr(i8)]
 pub enum DecompressionReturnValues {
     DecompOk = isal::ISAL_DECOMP_OK as _, /* No errors encountered while decompressing */
     EndInput = isal::ISAL_END_INPUT as _, /* End of input reached */
@@ -85,6 +89,7 @@ pub enum DecompressionReturnValues {
 impl TryFrom<isize> for DecompressionReturnValues {
     type Error = Error;
 
+    #[inline]
     fn try_from(value: isize) -> Result<Self> {
         match value {
             v if v == DecompressionReturnValues::DecompOk as _ => {
@@ -458,7 +463,6 @@ pub fn read_gzip_header(
     gz_hdr: &mut isal::isal_gzip_header,
 ) -> Result<()> {
     let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) } as isize;
-
     match DecompressionReturnValues::try_from(ret)? {
         DecompressionReturnValues::DecompOk => Ok(()),
         r => Err(Error::DecompressionError(r)),
