@@ -1,10 +1,8 @@
-#![allow(dead_code, unused_imports, unused_variables)]
-// TODO
-use std::io::{self, Read, Write};
+use std::io;
 use std::mem;
 use std::os::raw::c_int;
 
-use crate::error::{Error, Result};
+pub(crate) use crate::error::{Error, Result};
 use isal_sys as isal;
 
 /// Buffer size
@@ -14,33 +12,57 @@ pub mod read {
 
     use super::*;
 
+    /// Streaming compression for input streams implementing `std::io::Read`.
+    ///
+    /// Notes
+    /// -----
+    /// One should consider using `crate::igzip::compress` or `crate::igzip::compress_into` if possible.
+    /// In that context, we do not need to hold and maintain intermediate buffers for reading and writing.
     pub struct Encoder<R: io::Read> {
         inner: R,
         stream: isal::isal_zstream,
-        level: CompressionLevel,
         in_buf: [u8; BUF_SIZE],
-        out_buf: [u8; BUF_SIZE],
+        out_buf: Vec<u8>,
         dsts: usize,
         dste: usize,
+
+        #[allow(dead_code)] // held for releasing memory, buffer is only used by zstream
         level_buf: Vec<u8>,
-        is_gzip: bool, // gzip or deflate
     }
 
     impl<R: io::Read> Encoder<R> {
+        /// Create a new `Encoder` which implements the `std::io::Read` trait.
+        ///
+        /// Example
+        /// -------
+        /// ```
+        /// use std::{io, io::Read};
+        /// use isal_rs::igzip::{read::Encoder, CompressionLevel, decompress};
+        /// let data = b"Hello, World!".to_vec();
+        ///
+        /// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+        /// let mut output = vec![];
+        ///
+        /// // Numbeer of compressed bytes written to `output`
+        /// let n = io::copy(&mut encoder, &mut output).unwrap();
+        /// assert_eq!(n as usize, output.len());
+        ///
+        /// let decompressed = decompress(&output).unwrap();
+        /// assert_eq!(decompressed.as_slice(), data);
+        /// ```
         pub fn new(reader: R, level: CompressionLevel, is_gzip: bool) -> Encoder<R> {
-            let mut zstream = new_zstream(isal::isal_deflate_init);
+            let in_buf = [0_u8; BUF_SIZE];
+            let out_buf = Vec::with_capacity(BUF_SIZE);
 
-            let in_buf = [0_u8; BUF_SIZE as _];
-            let out_buf = [0_u8; BUF_SIZE as _];
+            let mut zstream = new_zstream(isal::isal_deflate_init);
 
             zstream.end_of_stream = 0;
             zstream.flush = isal::SYNC_FLUSH as _;
-
-            zstream.level = 3; //level as _;
+            zstream.level = level as _;
             zstream.gzip_flag = is_gzip as _;
 
-            let level_buf_size = isal::ISAL_DEF_LVL3_LARGE; // TODO: set level buf sizes
-            let mut level_buf = vec![0_u8; level_buf_size as _];
+            // TODO: set level buf sizes
+            let mut level_buf = vec![0_u8; isal::ISAL_DEF_LVL3_DEFAULT as _];
             zstream.level_buf = level_buf.as_mut_ptr();
             zstream.level_buf_size = level_buf.len() as _;
 
@@ -48,20 +70,29 @@ pub mod read {
                 inner: reader,
                 stream: zstream,
                 level_buf,
-                level,
                 in_buf,
                 out_buf,
-                is_gzip,
                 dste: 0,
                 dsts: 0,
             }
         }
 
-        pub fn get_ref(&mut self) -> &mut R {
+        /// Mutable reference to underlying reader, not advisable to modify during reading.
+        pub fn get_ref_mut(&mut self) -> &mut R {
             &mut self.inner
         }
 
-        pub fn read_from_out_buf(&mut self, buf: &mut [u8]) -> usize {
+        // Reference to underlying reader
+        pub fn get_ref(&self) -> &R {
+            &self.inner
+        }
+
+        // Read data from intermediate output buffer holding compressed output.
+        // It's unknown if the output from igzip will fit into buffer passed during read
+        // so we hold it here and empty as read calls pass.
+        // thanks to: https://github.com/BurntSushi/rust-snappy/blob/f9eb8d49c713adc48732fb95682a201a7b74d39a/src/read.rs#L327
+        #[inline(always)]
+        fn read_from_out_buf(&mut self, buf: &mut [u8]) -> usize {
             let available_bytes = self.dste - self.dsts;
             let count = std::cmp::min(available_bytes, buf.len());
             buf[..count].copy_from_slice(&self.out_buf[self.dsts..self.dsts + count]);
@@ -72,42 +103,86 @@ pub mod read {
 
     impl<R: io::Read> io::Read for Encoder<R> {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            // Check if there is data left in out_buf, otherwise refill; if end state, return 0
             let count = self.read_from_out_buf(buf);
             if count > 0 {
                 Ok(count)
             } else if self.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
-                // read input into buffer
-                self.stream.avail_in = self.inner.read(&mut self.in_buf).map(|v| v as u32)?;
-                self.stream.end_of_stream =
-                    (self.stream.avail_in < self.in_buf.len() as u32) as u16;
-
-                if self.stream.end_of_stream == 1 {
-                    self.stream.flush = isal::FULL_FLUSH as _;
+                // Read out next buf len worth to compress; filling intermediate out_buf
+                self.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                if self.stream.avail_in < self.in_buf.len() as _ {
+                    self.stream.end_of_stream = 1;
                 }
                 self.stream.next_in = self.in_buf.as_mut_ptr();
 
-                // compress this block
-                self.stream.avail_out = self.out_buf.len() as _;
-                self.stream.next_out = self.out_buf.as_mut_ptr();
+                let mut n_bytes = 0;
+                self.out_buf.truncate(0);
 
-                debug_assert_eq!(unsafe { isal::isal_deflate(&mut self.stream) }, 0);
+                // compress this chunk into out_buf
+                while self.stream.avail_in > 0 {
+                    self.out_buf.resize(self.out_buf.len() + BUF_SIZE, 0);
 
+                    self.stream.avail_out = BUF_SIZE as _;
+                    self.stream.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+
+                    isal_deflate_core(&mut self.stream, isal::isal_deflate)?;
+
+                    n_bytes += BUF_SIZE - self.stream.avail_out as usize;
+                }
+                self.out_buf.truncate(n_bytes);
+                self.dste = n_bytes;
                 self.dsts = 0;
-                self.dste = self.stream.avail_out as usize;
 
                 Ok(self.read_from_out_buf(buf))
             } else {
                 Ok(0)
             }
-
-            // TODO: impl level one condition: https://github.com/intel/isa-l/blob/62519d97ec8242dce393a1f81593f4f67da3ac92/igzip/igzip_example.c#L70
         }
     }
 
     #[cfg(test)]
-    mod tests {}
+    mod tests {
+
+        use super::*;
+        use std::io::{self, Cursor};
+
+        #[test]
+        fn basic_compress() -> Result<()> {
+            let input = b"hello, world!";
+            let mut encoder = Encoder::new(Cursor::new(input), CompressionLevel::Three, true);
+            let mut output = vec![];
+
+            let n = io::copy(&mut encoder, &mut output)? as usize;
+            let decompressed = decompress(&output[..n])?;
+
+            assert_eq!(input, decompressed.as_slice());
+            Ok(())
+        }
+
+        #[test]
+        fn longer_compress() -> Result<()> {
+            // Build input which is greater than BUF_SIZE
+            let mut input = vec![];
+            for chunk in std::iter::repeat(b"Hello, World!") {
+                input.extend_from_slice(chunk);
+                if input.len() > BUF_SIZE * 2 {
+                    break;
+                }
+            }
+
+            let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+            let mut output = vec![];
+
+            let n = io::copy(&mut encoder, &mut output)? as usize;
+            let decompressed = decompress(&output[..n])?;
+
+            assert_eq!(input, decompressed.as_slice());
+            Ok(())
+        }
+    }
 }
 
+#[derive(Copy, Clone)]
 #[repr(u8)]
 pub enum CompressionLevel {
     Zero = 0,
@@ -319,17 +394,6 @@ fn isal_deflate_core(
         };
         Err(err)
     }
-}
-
-#[derive(Copy, Clone)]
-#[repr(u8)]
-enum MemLevel {
-    Default,
-    Min,
-    Small,
-    Medium,
-    Large,
-    ExtraLarge,
 }
 
 #[cfg(test)]
