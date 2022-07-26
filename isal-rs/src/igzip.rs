@@ -8,16 +8,139 @@ use isal_sys as isal;
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
 
-
 /// Flush Flags
 #[derive(Copy, Clone)]
-#[repr(u32)]
 pub enum FlushFlags {
-    NoFlush = isal::NO_FLUSH,
-    SyncFlush = isal::SYNC_FLUSH,
-    FullFlush = isal::FULL_FLUSH,
+    NoFlush = isal::NO_FLUSH as _,
+    SyncFlush = isal::SYNC_FLUSH as _,
+    FullFlush = isal::FULL_FLUSH as _,
 }
 
+/// Compression return values
+#[derive(Copy, Clone, Debug)]
+pub enum CompressionReturnValues {
+    CompOk = isal::COMP_OK as _,
+    InvalidFlush = isal::INVALID_FLUSH as _,
+    InvalidParam = isal::INVALID_PARAM as _,
+    StatelessOverflow = isal::STATELESS_OVERFLOW as _,
+    InvalidOperation = isal::ISAL_INVALID_OPERATION as _,
+    InvalidState = isal::ISAL_INVALID_STATE as _,
+    InvalidLevel = isal::ISAL_INVALID_LEVEL as _,
+    InvalidLevelBuf = isal::ISAL_INVALID_LEVEL_BUF as _,
+}
+
+impl TryFrom<isize> for CompressionReturnValues {
+    type Error = Error;
+
+    fn try_from(value: isize) -> Result<Self> {
+        match value {
+            v if v == CompressionReturnValues::CompOk as _ => Ok(CompressionReturnValues::CompOk),
+            v if v == CompressionReturnValues::InvalidFlush as _ => {
+                Ok(CompressionReturnValues::InvalidFlush)
+            }
+            v if v == CompressionReturnValues::InvalidParam as _ => {
+                Ok(CompressionReturnValues::InvalidParam)
+            }
+            v if v == CompressionReturnValues::StatelessOverflow as _ => {
+                Ok(CompressionReturnValues::StatelessOverflow)
+            }
+            v if v == CompressionReturnValues::InvalidOperation as _ => {
+                Ok(CompressionReturnValues::InvalidOperation)
+            }
+            v if v == CompressionReturnValues::InvalidState as _ => {
+                Ok(CompressionReturnValues::InvalidState)
+            }
+            v if v == CompressionReturnValues::InvalidLevel as _ => {
+                Ok(CompressionReturnValues::InvalidLevel)
+            }
+            v if v == CompressionReturnValues::InvalidLevelBuf as _ => {
+                Ok(CompressionReturnValues::InvalidLevelBuf)
+            }
+            _ => Err(Error::Other((
+                Some(value),
+                "Unknown exit code from compression".to_string(),
+            ))),
+        }
+    }
+}
+
+/// Decompression return values
+#[derive(Copy, Clone, Debug)]
+pub enum DecompressionReturnValues {
+    DecompOk = isal::ISAL_DECOMP_OK as _, /* No errors encountered while decompressing */
+    EndInput = isal::ISAL_END_INPUT as _, /* End of input reached */
+    OutOverflow = isal::ISAL_OUT_OVERFLOW as _, /* End of output reached */
+    NameOverflow = isal::ISAL_NAME_OVERFLOW as _, /* End of gzip name buffer reached */
+    CommentOverflow = isal::ISAL_COMMENT_OVERFLOW as _, /* End of gzip name buffer reached */
+    ExtraOverflow = isal::ISAL_EXTRA_OVERFLOW as _, /* End of extra buffer reached */
+    NeedDict = isal::ISAL_NEED_DICT as _, /* Stream needs a dictionary to continue */
+    InvalidBlock = isal::ISAL_INVALID_BLOCK as _, /* Invalid deflate block found */
+    InvalidSymbol = isal::ISAL_INVALID_SYMBOL as _, /* Invalid deflate symbol found */
+    InvalidLoopBack = isal::ISAL_INVALID_LOOKBACK as _, /* Invalid lookback distance found */
+    InvalidWrapper = isal::ISAL_INVALID_WRAPPER as _, /* Invalid gzip/zlib wrapper found */
+    UnsupportedMethod = isal::ISAL_UNSUPPORTED_METHOD as _, /* Gzip/zlib wrapper specifies unsupported compress method */
+    IncorrectChecksum = isal::ISAL_INCORRECT_CHECKSUM as _, /* Incorrect checksum found */
+}
+
+impl TryFrom<isize> for DecompressionReturnValues {
+    type Error = Error;
+
+    fn try_from(value: isize) -> Result<Self> {
+        match value {
+            v if v == DecompressionReturnValues::DecompOk as _ => {
+                Ok(DecompressionReturnValues::DecompOk)
+            }
+            v if v == DecompressionReturnValues::EndInput as _ => {
+                Ok(DecompressionReturnValues::EndInput)
+            }
+            v if v == DecompressionReturnValues::OutOverflow as _ => {
+                Ok(DecompressionReturnValues::OutOverflow)
+            }
+            v if v == DecompressionReturnValues::NameOverflow as _ => {
+                Ok(DecompressionReturnValues::NameOverflow)
+            }
+            v if v == DecompressionReturnValues::CommentOverflow as _ => {
+                Ok(DecompressionReturnValues::CommentOverflow)
+            }
+            v if v == DecompressionReturnValues::ExtraOverflow as _ => {
+                Ok(DecompressionReturnValues::ExtraOverflow)
+            }
+            v if v == DecompressionReturnValues::NeedDict as _ => {
+                Ok(DecompressionReturnValues::NeedDict)
+            }
+            v if v == DecompressionReturnValues::InvalidBlock as _ => {
+                Ok(DecompressionReturnValues::InvalidBlock)
+            }
+            v if v == DecompressionReturnValues::InvalidSymbol as _ => {
+                Ok(DecompressionReturnValues::InvalidSymbol)
+            }
+            v if v == DecompressionReturnValues::InvalidLoopBack as _ => {
+                Ok(DecompressionReturnValues::InvalidLoopBack)
+            }
+            v if v == DecompressionReturnValues::InvalidWrapper as _ => {
+                Ok(DecompressionReturnValues::InvalidWrapper)
+            }
+            v if v == DecompressionReturnValues::UnsupportedMethod as _ => {
+                Ok(DecompressionReturnValues::UnsupportedMethod)
+            }
+            v if v == DecompressionReturnValues::IncorrectChecksum as _ => {
+                Ok(DecompressionReturnValues::IncorrectChecksum)
+            }
+            _ => Err(Error::Other((
+                Some(value),
+                "Unknown exit code from decompression".to_string(),
+            ))),
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+#[repr(u8)]
+pub enum CompressionLevel {
+    Zero = 0,
+    One = 1,
+    Three = 3,
+}
 
 pub mod read {
 
@@ -193,14 +316,6 @@ pub mod read {
     }
 }
 
-#[derive(Copy, Clone)]
-#[repr(u8)]
-pub enum CompressionLevel {
-    Zero = 0,
-    One = 1,
-    Three = 3,
-}
-
 /// Create a new zstream, calling the `init` operation from underlying isal lib.
 #[inline(always)]
 pub(crate) fn new_zstream(
@@ -342,27 +457,11 @@ pub fn read_gzip_header(
     zst: &mut isal::inflate_state,
     gz_hdr: &mut isal::isal_gzip_header,
 ) -> Result<()> {
-    let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) };
+    let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) } as isize;
 
-    const ISAL_DECOMP_OK: i32 = isal::ISAL_DECOMP_OK as _;
-    const ISAL_END_INPUT: i32 = isal::ISAL_END_INPUT as _;
-    const ISAL_NAME_OVERFLOW: i32 = isal::ISAL_NAME_OVERFLOW as _;
-    const ISAL_COMMENT_OVERFLOW: i32 = isal::ISAL_COMMENT_OVERFLOW as _;
-    const ISAL_EXTRA_OVERFLOW: i32 = isal::ISAL_EXTRA_OVERFLOW as _;
-
-    match ret {
-        ISAL_DECOMP_OK => Ok(()), // (header was successfully parsed)
-        ISAL_END_INPUT => Err(Error::GzipHeaderEndInput), // (all input was parsed),
-        ISAL_NAME_OVERFLOW => Err(Error::GzipHeaderNameOverflow), //(gz_hdr->name overflowed while parsing),
-        ISAL_COMMENT_OVERFLOW => Err(Error::GzipHeaderCommentOverflow), // (gz_hdr->comment overflowed while parsing),
-        ISAL_EXTRA_OVERFLOW => Err(Error::GzipHeaderExtraOverflow), // (gz_hdr->extra overflowed while parsing),
-        isal::ISAL_INVALID_WRAPPER => Err(Error::GzipHeaderInvalidWrapper), // (invalid gzip header found),
-        isal::ISAL_UNSUPPORTED_METHOD => Err(Error::GzipHeaderUnsupportedMethod), // (deflate is not the compression method),
-        isal::ISAL_INCORRECT_CHECKSUM => Err(Error::GzipHeaderIncorrectChecksum), // (gzip header checksum was incorrect)
-        _ => Err(Error::Other((
-            Some(ret as _),
-            "Read GzipHeader failed.".to_string(),
-        ))),
+    match DecompressionReturnValues::try_from(ret)? {
+        DecompressionReturnValues::DecompOk => Ok(()),
+        r => Err(Error::DecompressionError(r)),
     }
 }
 
@@ -387,34 +486,11 @@ fn isal_inflate_core(
     zst: &mut isal::inflate_state,
     op: unsafe extern "C" fn(*mut isal::inflate_state) -> c_int,
 ) -> Result<()> {
-    let ret = unsafe { op(zst as *mut _) };
+    let ret = unsafe { op(zst as *mut _) } as isize;
 
-    // TODO? Awkward, COMP_OK is u32, and other variants are i32
-    if ret as u32 == isal::ISAL_DECOMP_OK {
-        Ok(())
-    } else {
-        // isal error codes that at u32 unlike other i32 err defs
-        const NEED_DICT: i32 = isal::ISAL_NEED_DICT as i32;
-        const END_INPUT: i32 = isal::ISAL_END_INPUT as i32;
-        const OUT_OVERFLOW: i32 = isal::ISAL_OUT_OVERFLOW as i32;
-
-        let err = match ret {
-            END_INPUT => Error::EndInput,
-            NEED_DICT => Error::NeedDict,
-            OUT_OVERFLOW => Error::OutOverflow,
-            isal::ISAL_INVALID_SYMBOL => Error::InvalidSymbol,
-            isal::ISAL_INVALID_LOOKBACK => Error::InvalidLookBack,
-            isal::ISAL_INVALID_WRAPPER => Error::InvalidWrapper,
-            isal::ISAL_UNSUPPORTED_METHOD => Error::UnsupportedMethod,
-            isal::ISAL_INCORRECT_CHECKSUM => Error::IncorrectChecksum,
-            isal::STATELESS_OVERFLOW => Error::StatelessOverflow,
-
-            _ => Error::Other((
-                Some(ret as _),
-                "inflate call failed, unaccounted for exit code.".to_string(),
-            )),
-        };
-        Err(err)
+    match DecompressionReturnValues::try_from(ret)? {
+        DecompressionReturnValues::DecompOk => Ok(()),
+        r => Err(Error::DecompressionError(r)),
     }
 }
 
@@ -424,23 +500,12 @@ fn isal_deflate_core(
     zstream: &mut isal::isal_zstream,
     op: unsafe extern "C" fn(*mut isal::isal_zstream) -> c_int,
 ) -> Result<()> {
-    let ret = unsafe { op(zstream as *mut _) };
+    let ret = unsafe { op(zstream as *mut _) } as isize;
 
     // TODO? Awkward, COMP_OK is u32, and other variants are i32
-    if ret as u32 == isal::COMP_OK {
-        Ok(())
-    } else {
-        let err = match ret {
-            isal::INVALID_FLUSH => Error::InvalidFlush,
-            isal::ISAL_INVALID_LEVEL => Error::InvalidLevel,
-            isal::ISAL_INVALID_LEVEL_BUF => Error::InvalidLevelBuf,
-            isal::STATELESS_OVERFLOW => Error::StatelessOverflow,
-            _ => Error::Other((
-                Some(ret as _),
-                "deflate call failed, unaccounted for exit code.".to_string(),
-            )),
-        };
-        Err(err)
+    match CompressionReturnValues::try_from(ret)? {
+        CompressionReturnValues::CompOk => Ok(()),
+        r => Err(Error::CompressionError(r)),
     }
 }
 

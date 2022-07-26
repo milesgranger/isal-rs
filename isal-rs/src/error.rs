@@ -1,5 +1,7 @@
 use std::{fmt, io, result};
 
+use crate::igzip::{CompressionReturnValues, DecompressionReturnValues};
+
 pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
@@ -7,21 +9,10 @@ pub enum Error {
     Io(io::Error),
 
     // isal compression errors
-    InvalidFlush,
-    InvalidLevel,
-    InvalidLevelBuf,
-    StatelessOverflow, // output buffer not large enough.
+    CompressionError(CompressionReturnValues),
 
     // isal decompression errors
-    InvalidBlock,
-    NeedDict,
-    InvalidSymbol,
-    InvalidLookBack,
-    InvalidWrapper,
-    UnsupportedMethod,
-    IncorrectChecksum,
-    EndInput,
-    OutOverflow, // if output buffer was not large enough
+    DecompressionError(DecompressionReturnValues),
 
     // Gzip header reading errors
     GzipHeaderEndInput,
