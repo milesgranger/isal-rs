@@ -491,7 +491,6 @@ fn isal_inflate_core(
     op: unsafe extern "C" fn(*mut isal::inflate_state) -> c_int,
 ) -> Result<()> {
     let ret = unsafe { op(zst as *mut _) } as isize;
-
     match DecompressionReturnValues::try_from(ret)? {
         DecompressionReturnValues::DecompOk => Ok(()),
         r => Err(Error::DecompressionError(r)),
@@ -505,8 +504,6 @@ fn isal_deflate_core(
     op: unsafe extern "C" fn(*mut isal::isal_zstream) -> c_int,
 ) -> Result<()> {
     let ret = unsafe { op(zstream as *mut _) } as isize;
-
-    // TODO? Awkward, COMP_OK is u32, and other variants are i32
     match CompressionReturnValues::try_from(ret)? {
         CompressionReturnValues::CompOk => Ok(()),
         r => Err(Error::CompressionError(r)),
