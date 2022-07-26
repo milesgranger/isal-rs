@@ -23,6 +23,15 @@ pub enum Error {
     EndInput,
     OutOverflow, // if output buffer was not large enough
 
+    // Gzip header reading errors
+    GzipHeaderEndInput,
+    GzipHeaderNameOverflow,
+    GzipHeaderCommentOverflow,
+    GzipHeaderExtraOverflow,
+    GzipHeaderInvalidWrapper,
+    GzipHeaderUnsupportedMethod,
+    GzipHeaderIncorrectChecksum,
+
     // Anything else not covered, exit code, message
     Other((Option<isize>, String)),
 }

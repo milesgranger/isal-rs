@@ -299,7 +299,7 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
         }
 
         // Read this member's gzip header
-        let ret = unsafe { isal::isal_read_gzip_header(&mut zst as *mut _, &mut gz_hdr as *mut _) };
+        read_gzip_header(&mut zst, &mut gz_hdr)?;
 
         // decompress member
         while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
@@ -316,6 +316,43 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     buf.truncate(n_bytes);
 
     Ok(buf)
+}
+
+/// Read and return gzip header information
+///
+/// On entry state must be initialized and next_in pointing to a gzip compressed
+/// buffer. The buffers gz_hdr->extra, gz_hdr->name, gz_hdr->comments and the
+/// buffer lengths must be set to record the corresponding field, or set to NULL
+/// to disregard that gzip header information. If one of these buffers overflows,
+/// the user can reallocate a larger buffer and call this function again to
+/// continue reading the header information.
+#[inline(always)]
+pub fn read_gzip_header(
+    zst: &mut isal::inflate_state,
+    gz_hdr: &mut isal::isal_gzip_header,
+) -> Result<()> {
+    let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) };
+
+    const ISAL_DECOMP_OK: i32 = isal::ISAL_DECOMP_OK as _;
+    const ISAL_END_INPUT: i32 = isal::ISAL_END_INPUT as _;
+    const ISAL_NAME_OVERFLOW: i32 = isal::ISAL_NAME_OVERFLOW as _;
+    const ISAL_COMMENT_OVERFLOW: i32 = isal::ISAL_COMMENT_OVERFLOW as _;
+    const ISAL_EXTRA_OVERFLOW: i32 = isal::ISAL_EXTRA_OVERFLOW as _;
+
+    match ret {
+        ISAL_DECOMP_OK => Ok(()), // (header was successfully parsed)
+        ISAL_END_INPUT => Err(Error::GzipHeaderEndInput), // (all input was parsed),
+        ISAL_NAME_OVERFLOW => Err(Error::GzipHeaderNameOverflow), //(gz_hdr->name overflowed while parsing),
+        ISAL_COMMENT_OVERFLOW => Err(Error::GzipHeaderCommentOverflow), // (gz_hdr->comment overflowed while parsing),
+        ISAL_EXTRA_OVERFLOW => Err(Error::GzipHeaderExtraOverflow), // (gz_hdr->extra overflowed while parsing),
+        isal::ISAL_INVALID_WRAPPER => Err(Error::GzipHeaderInvalidWrapper), // (invalid gzip header found),
+        isal::ISAL_UNSUPPORTED_METHOD => Err(Error::GzipHeaderUnsupportedMethod), // (deflate is not the compression method),
+        isal::ISAL_INCORRECT_CHECKSUM => Err(Error::GzipHeaderIncorrectChecksum), // (gzip header checksum was incorrect)
+        _ => Err(Error::Other((
+            Some(ret as _),
+            "Read GzipHeader failed.".to_string(),
+        ))),
+    }
 }
 
 #[inline(always)]
