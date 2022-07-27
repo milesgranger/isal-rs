@@ -7,7 +7,6 @@ edition = "2021"
 [dependencies]
 isal-sys = { path = "./../isal-sys" }
 
-
 [dev-dependencies]
 criterion = "0.3"
 md5 = "0.7.0"

@@ -157,6 +157,24 @@ pub mod read {
     /// -----
     /// One should consider using `crate::igzip::compress` or `crate::igzip::compress_into` if possible.
     /// In that context, we do not need to hold and maintain intermediate buffers for reading and writing.
+    ///
+    /// Example
+    /// -------
+    /// ```
+    /// use std::{io, io::Read};
+    /// use isal_rs::igzip::{read::Encoder, CompressionLevel, decompress};
+    /// let data = b"Hello, World!".to_vec();
+    ///
+    /// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+    /// let mut compressed = vec![];
+    ///
+    /// // Numbeer of compressed bytes written to `output`
+    /// let n = io::copy(&mut encoder, &mut compressed).unwrap();
+    /// assert_eq!(n as usize, compressed.len());
+    ///
+    /// let decompressed = decompress(&compressed).unwrap();
+    /// assert_eq!(decompressed.as_slice(), data);
+    /// ```
     pub struct Encoder<R: io::Read> {
         inner: R,
         stream: isal::isal_zstream,
@@ -171,24 +189,6 @@ pub mod read {
 
     impl<R: io::Read> Encoder<R> {
         /// Create a new `Encoder` which implements the `std::io::Read` trait.
-        ///
-        /// Example
-        /// -------
-        /// ```
-        /// use std::{io, io::Read};
-        /// use isal_rs::igzip::{read::Encoder, CompressionLevel, decompress};
-        /// let data = b"Hello, World!".to_vec();
-        ///
-        /// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
-        /// let mut output = vec![];
-        ///
-        /// // Numbeer of compressed bytes written to `output`
-        /// let n = io::copy(&mut encoder, &mut output).unwrap();
-        /// assert_eq!(n as usize, output.len());
-        ///
-        /// let decompressed = decompress(&output).unwrap();
-        /// assert_eq!(decompressed.as_slice(), data);
-        /// ```
         pub fn new(reader: R, level: CompressionLevel, is_gzip: bool) -> Encoder<R> {
             let in_buf = [0_u8; BUF_SIZE];
             let out_buf = Vec::with_capacity(BUF_SIZE);
@@ -279,6 +279,122 @@ pub mod read {
         }
     }
 
+    /// Streaming compression for input streams implementing `std::io::Read`.
+    ///
+    /// Notes
+    /// -----
+    /// One should consider using `crate::igzip::decompress` or `crate::igzip::decompress_into` if possible.
+    /// In that context, we do not need to hold and maintain intermediate buffers for reading and writing.
+    ///
+    /// Example
+    /// -------
+    /// ```
+    /// use std::{io, io::Read};
+    /// use isal_rs::igzip::{read::Decoder, CompressionLevel, compress};
+    /// let data = b"Hello, World!".to_vec();
+    ///
+    /// let compressed = compress(data.as_slice(), CompressionLevel::Three, true).unwrap();
+    /// let mut decoder = Decoder::new(compressed.as_slice());
+    /// let mut decompressed = vec![];
+    ///
+    /// // Numbeer of compressed bytes written to `output`
+    /// let n = io::copy(&mut decoder, &mut decompressed).unwrap();
+    /// assert_eq!(n as usize, data.len());
+    /// assert_eq!(decompressed.as_slice(), data);
+    /// ```
+    pub struct Decoder<R: io::Read> {
+        inner: R,
+        zst: isal::inflate_state,
+        in_buf: [u8; BUF_SIZE],
+        out_buf: Vec<u8>,
+        dsts: usize,
+        dste: usize,
+    }
+
+    impl<R: io::Read> Decoder<R> {
+        pub fn new(reader: R) -> Decoder<R> {
+            let mut zst = new_inflate_state(isal::isal_inflate_init);
+            zst.crc_flag = 1;
+
+            Self {
+                inner: reader,
+                zst,
+                in_buf: [0_u8; BUF_SIZE],
+                out_buf: Vec::with_capacity(BUF_SIZE),
+                dste: 0,
+                dsts: 0,
+            }
+        }
+
+        /// Mutable reference to underlying reader, not advisable to modify during reading.
+        pub fn get_ref_mut(&mut self) -> &mut R {
+            &mut self.inner
+        }
+
+        // Reference to underlying reader
+        pub fn get_ref(&self) -> &R {
+            &self.inner
+        }
+
+        // Read data from intermediate output buffer holding compressed output.
+        // It's unknown if the output from igzip will fit into buffer passed during read
+        // so we hold it here and empty as read calls pass.
+        // thanks to: https://github.com/BurntSushi/rust-snappy/blob/f9eb8d49c713adc48732fb95682a201a7b74d39a/src/read.rs#L327
+        #[inline(always)]
+        fn read_from_out_buf(&mut self, buf: &mut [u8]) -> usize {
+            let available_bytes = self.dste - self.dsts;
+            let count = std::cmp::min(available_bytes, buf.len());
+            buf[..count].copy_from_slice(&self.out_buf[self.dsts..self.dsts + count]);
+            self.dsts += count;
+            count
+        }
+    }
+
+    impl<R: io::Read> io::Read for Decoder<R> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            // Check if there is data left in out_buf, otherwise refill; if end state, return 0
+            let count = self.read_from_out_buf(buf);
+            if count > 0 {
+                Ok(count)
+            } else {
+                // Read out next buf len worth to compress; filling intermediate out_buf
+                self.zst.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                self.zst.next_in = self.in_buf.as_mut_ptr();
+
+                let mut gz_hdr = isal::isal_gzip_header::default();
+                unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
+
+                let mut n_bytes = 0;
+                while self.zst.avail_in != 0 {
+                    // Ensure reset for next member (if exists; not on first iteration)
+                    if n_bytes > 0 {
+                        unsafe { isal::isal_inflate_reset(&mut self.zst as *mut _) };
+                    }
+
+                    // Read this member's gzip header
+                    read_gzip_header(&mut self.zst, &mut gz_hdr)?;
+
+                    // decompress member
+                    while self.zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+                        self.out_buf.resize(self.out_buf.len() + BUF_SIZE, 0);
+
+                        self.zst.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+                        self.zst.avail_out = BUF_SIZE as _;
+
+                        isal_inflate_core(&mut self.zst, isal::isal_inflate)?;
+
+                        n_bytes += BUF_SIZE - self.zst.avail_out as usize;
+                    }
+                }
+                self.out_buf.truncate(n_bytes);
+                self.dste = n_bytes;
+                self.dsts = 0;
+
+                Ok(self.read_from_out_buf(buf))
+            }
+        }
+    }
+
     #[cfg(test)]
     mod tests {
 
@@ -316,6 +432,43 @@ pub mod read {
             let decompressed = decompress(&output[..n])?;
 
             assert_eq!(input, decompressed.as_slice());
+            Ok(())
+        }
+
+        #[test]
+        fn basic_decompress() -> Result<()> {
+            let input = b"hello, world!";
+            let compressed = compress(input, CompressionLevel::Three, true)?;
+
+            let mut decoder = Decoder::new(compressed.as_slice());
+            let mut decompressed = vec![];
+
+            let n = io::copy(&mut decoder, &mut decompressed)? as usize;
+            assert_eq!(n, decompressed.len());
+            assert_eq!(input, decompressed.as_slice());
+            Ok(())
+        }
+
+        #[test]
+        fn longer_decompress() -> Result<()> {
+            // Build input which is greater than BUF_SIZE
+            let mut input = vec![];
+            for chunk in std::iter::repeat(b"Hello, World!") {
+                input.extend_from_slice(chunk);
+                if input.len() > BUF_SIZE * 3 {
+                    break;
+                }
+            }
+
+            let compressed = compress(input.as_slice(), CompressionLevel::Three, true)?;
+
+            let mut decoder = Decoder::new(compressed.as_slice());
+            let mut decompressed = vec![];
+
+            let n = io::copy(&mut decoder, &mut decompressed)? as usize;
+            assert_eq!(n, decompressed.len());
+            assert_eq!(input, decompressed.as_slice());
+
             Ok(())
         }
     }
