@@ -1,16 +1,15 @@
 use std::env;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() -> Result<()> {
-    
     // This will not break if not built from source into expected 'isal-sys/install',
     // deferring to the system installed libisal instead.
     let search_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("install/lib");
     println!("cargo:rustc-link-search=native={}", search_dir.display());
     println!("cargo:rustc-link-lib=isal");
-    
+
     println!("cargo:rerun-if-changed=wrapper.h");
 
     let bindings = bindgen::Builder::default()
