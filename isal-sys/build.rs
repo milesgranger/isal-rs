@@ -17,6 +17,7 @@ fn main() -> Result<()> {
         .derive_default(true)
         .dynamic_link_require_all(true)
         .clang_arg("-fPIC")
+        .generate_inline_functions(true)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()?;
 
