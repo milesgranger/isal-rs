@@ -1,9 +1,13 @@
 ## Rust sys and wrapper crates for [isa-l](https://github.com/intel/isa-l)
 
+[![CI](https://github.com/milesgranger/isal-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/milesgranger/isal-rs/actions/workflows/ci.yml)
+
 ---
 
-### [isal-sys](./isal-sys/): sys crate, raw Rust bindings to the isa-l library. [_mostly finished_]
-### [isal-rs](./isal-rs/): high level wrapper, including gzip/deflate API. [_WIP_]
+### [isal-sys](./isal-sys/)
+  - _sys crate, raw Rust bindings to the isa-l library. [only bindings to lib_gzip]_
+### [isal-rs](./isal-rs/)
+  - _high level wrapper, including gzip/deflate API. [_WIP_]_
 
 ---
 
