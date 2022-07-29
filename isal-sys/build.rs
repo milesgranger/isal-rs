@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     // deferring to the system installed libisal instead.
     let search_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("install/lib");
     println!("cargo:rustc-link-search=native={}", search_dir.display());
-    println!("cargo:rustc-link-lib=isal");
+    println!("cargo:rustc-link-lib=static=isal");
 
     println!("cargo:rerun-if-changed=wrapper.h");
 

@@ -677,7 +677,7 @@ mod tests {
 
     fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
         fs::read(format!(
-            "{}/../../pyrus-cramjam/benchmarks/data/fireworks.jpeg",
+            "{}/test-data/fireworks.jpeg",
             env!("CARGO_MANIFEST_DIR")
         ))
     }

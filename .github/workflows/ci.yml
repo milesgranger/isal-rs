@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  release:
+    types:
+      - released
+      - prereleased
+
+jobs:
+  BuildAndTest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]  #, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: ISA-L Build Dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install -y nasm
+
+      - name: Build ISA-L
+        run: |
+          cd isal-sys/isa-l
+          make install prefix=$(pwd)/../install -f Makefile.unx
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          default: true
+
+      - name: Build
+        run: cargo build
+      
+      - name: Test
+        run: cargo test
