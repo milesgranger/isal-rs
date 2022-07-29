@@ -3,10 +3,7 @@ use isal_rs::igzip::{self, read::Encoder};
 use std::{fs, io};
 
 fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
-    fs::read(format!(
-        "{}/../../pyrus-cramjam/benchmarks/data/html_x_4",
-        env!("CARGO_MANIFEST_DIR")
-    ))
+    fs::read(format!("{}/test-data/html_x_4", env!("CARGO_MANIFEST_DIR")))
 }
 
 fn igzip_compress(c: &mut Criterion) {
