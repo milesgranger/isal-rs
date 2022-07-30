@@ -8,35 +8,49 @@ on:
       - prereleased
 
 jobs:
-  BuildAndTest:
-    runs-on: ${{ matrix.os }}
+
+  linux:
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest]  #, macos-latest, windows-latest]
+        # matches supported targets from tags in https://hub.docker.com/r/muslcc/x86_64/tags
+        target: ["aarch64", "x86_64"]
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
 
-      - name: ISA-L Build Dependencies
-        run: |
-          sudo apt update -y
-          sudo apt install -y nasm
+      # musl.cc keeps timing out, use docker instead
+      #- name: Setup musl
+      #  run: |
+      #    wget http://musl.cc/${{ matrix.target }}-linux-musl-cross.tgz
+      #    tar -xz -f ${{ matrix.target }}-linux-musl-cross.tgz 
+      #    echo "PATH=$PATH:$(pwd)/${{ matrix.target }}-linux-musl-cross/bin" >> $GITHUB_ENV
 
       - name: Build ISA-L
         run: |
-          cd isal-sys/isa-l
-          make install prefix=$(pwd)/../install -f Makefile.unx
+          docker run --rm -v $(pwd):/code muslcc/x86_64:${{ matrix.target }}-linux-musl sh -c "apk add make nasm && cd /code/isal-sys/isa-l && make install host_cpu=${{ matrix.target }} prefix=./../install -f Makefile.unx CFLAGS_${{ matrix.target }}=-fPIC LDFLAGS=-static"
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          target: ${{ matrix.target }}-unknown-linux-musl
           profile: minimal
           default: true
 
+      - name: Rust Build Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
       - name: Build
-        run: cargo build
+        run: cargo build --target ${{ matrix.target }}-unknown-linux-musl
+
+      # Cross to run the tests
+      - name: Install cross
+        run: cargo install cross
       
       - name: Test
-        run: cargo test
+        run: cross test --target ${{ matrix.target }}-unknown-linux-musl
