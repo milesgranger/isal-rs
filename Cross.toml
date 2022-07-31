@@ -1,0 +1,2 @@
+[build]
+pre-build = ["apt update && apt install -y llvm-dev libclang-dev clang"]  # required by cbindgen
