@@ -1,2 +1,2 @@
-[target.powerpc64le-unknown-linux-gnu]
+[build]
 pre-build = ["apt update && apt install -y llvm-dev libclang-dev clang"]  # required by cbindgen
