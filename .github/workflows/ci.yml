@@ -31,7 +31,7 @@ jobs:
       - name: System installs
         run: |
           sudo apt update
-          sudo apt install -y gcc-multilib
+          sudo apt install -y gcc-multilib llvm-dev libclang-dev clang
 
       - name: Build ISA-L (aarch64, x86_64)
         if: ${{ !startsWith(matrix.arch, 'powerpc64le') }} 
