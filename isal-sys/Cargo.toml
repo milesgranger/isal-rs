@@ -9,3 +9,6 @@ edition = "2021"
 [build-dependencies]
 bindgen = "^0.60"
 cc = "^1"
+
+[package.metadata.cross.target.powerpc64le-unknown-linux-gnu]
+pre-build = ["apt update && apt install -y llvm-dev libclang-dev clang"]  # required by cbindgen
