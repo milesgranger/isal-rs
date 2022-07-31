@@ -31,7 +31,7 @@ jobs:
       - name: System installs
         run: |
           sudo apt update
-          sudo apt install -y gcc-multilib llvm-dev libclang-dev clang
+          sudo apt install -y gcc-multilib
 
       - name: Build ISA-L (aarch64, x86_64)
         if: ${{ !startsWith(matrix.arch, 'powerpc64le') }} 
@@ -50,7 +50,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          #profile: minimal
+          target: ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
+          profile: minimal
           default: true
 
       - name: Rust Build Caching
@@ -58,14 +59,16 @@ jobs:
         with:
           key: ${{ matrix.arch }}-linux-${{ matrix.abi }}
 
-      - name: Install cross
-        run: |
-          rustup target add ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
-          cargo install cross
-          cross build --help
-
       - name: Build
-        run: cross build --tests --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
+        run: 
+          cargo build --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
       
+      # Cross for running tests
+      # Skipping powerpc64le: https://github.com/cross-rs/cross/issues/975
+      - name: Install cross
+        if: ${{ !startsWith(matrix.arch, 'powerpc64le') }}
+        run: cargo install cross
+
       - name: Test
+        if: ${{ !startsWith(matrix.arch, 'powerpc64le') }}
         run: cross test --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
