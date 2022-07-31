@@ -50,8 +50,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
-          profile: minimal
+          #profile: minimal
           default: true
 
       - name: Rust Build Caching
@@ -60,7 +59,9 @@ jobs:
           key: ${{ matrix.arch }}-linux-${{ matrix.abi }}
 
       - name: Install cross
-        run: cargo install cross
+        run: |
+          rustup target add ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
+          cargo install cross
 
       - name: Build
         run: cross build --tests --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
