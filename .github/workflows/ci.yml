@@ -50,6 +50,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          target: ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
           profile: minimal
           default: true
 
@@ -62,7 +63,7 @@ jobs:
         run: cargo install cross
 
       - name: Build
-        run: cross build --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
+        run: cargo build --tests --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
       
       - name: Test
         run: cross test --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
