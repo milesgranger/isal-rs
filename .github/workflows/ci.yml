@@ -34,12 +34,12 @@ jobs:
           sudo apt install -y gcc-multilib
 
       - name: Build ISA-L (aarch64, x86_64)
-        if: ${{ !startsWith(matrix.arch, powerpc64le) }} 
+        if: ${{ !startsWith(matrix.arch, 'powerpc64le') }} 
         run: |
           docker run --rm -v $(pwd):/code muslcc/x86_64:${{ matrix.arch }}-linux-${{ matrix.abi }} sh -c "apk add make nasm && cd /code/isal-sys/isa-l && make install host_cpu=${{ matrix.arch }} prefix=./../install -f Makefile.unx CFLAGS_${{ matrix.arch }}=-fPIC LDFLAGS=-static"
 
       - name: Build ISA-L (powerpc64le)
-        if: ${{ startsWith(matrix.arch, powerpc64le) }} 
+        if: ${{ startsWith(matrix.arch, 'powerpc64le') }} 
         run: |
           sudo apt install -y gcc-10-powerpc64le-linux-gnu
           cd isal-sys/isa-l
