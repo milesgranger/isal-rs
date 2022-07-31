@@ -15,7 +15,11 @@ jobs:
       fail-fast: false
       matrix:
         # matches supported targets from tags in https://hub.docker.com/r/muslcc/x86_64/tags
-        target: ["aarch64", "x86_64"]
+        target: 
+          - {"arch": "aarch64", "abi": "musl"}, 
+          - {"arch": "x86_64", "abi": "musl"},
+          - {"arch": "powerpc64le", "abi": "gnu"}
+          
     steps:
       - uses: actions/checkout@v2
         with:
@@ -26,29 +30,38 @@ jobs:
           sudo apt update
           sudo apt install -y gcc-multilib
 
-      - name: Build ISA-L
+      - name: Build ISA-L (aarch64, x86_64)
+        if: ${{ !startsWith(matrix.target.arch, powerpc64le) }} 
         run: |
-          docker run --rm -v $(pwd):/code muslcc/x86_64:${{ matrix.target }}-linux-musl sh -c "apk add make nasm && cd /code/isal-sys/isa-l && make install host_cpu=${{ matrix.target }} prefix=./../install -f Makefile.unx CFLAGS_${{ matrix.target }}=-fPIC LDFLAGS=-static"
+          docker run --rm -v $(pwd):/code muslcc/x86_64:${{ matrix.target.arch }}-linux-${{ matrix.target.abi }} sh -c "apk add make nasm && cd /code/isal-sys/isa-l && make install host_cpu=${{ matrix.target.arch }} prefix=./../install -f Makefile.unx CFLAGS_${{ matrix.target.arch }}=-fPIC LDFLAGS=-static"
+
+      - name: Build ISA-L (powerpc64le)
+        if: ${{ startsWith(matrix.target.arch, powerpc64le) }} 
+        run: |
+          sudo apt install -y gcc-10-powerpc64le-linux-gnu
+          cd isal-sys/isa-l
+          make install host_cpu=ppc64le prefix=./../install -f Makefile.unx CC=powerpc64le-linux-gnu-gcc-10 CFLAGS_ppc64le=-fPIC LDFLAGS=-static
+          cd ../..
 
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}-unknown-linux-musl
+          target: ${{ matrix.target.arch }}-unknown-linux-${{ matrix.target.abi }}
           profile: minimal
           default: true
 
       - name: Rust Build Caching
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target.arch }}-linux-${{ matrix.target.abi }}
 
       - name: Build
-        run: cargo build --target ${{ matrix.target }}-unknown-linux-musl
+        run: cargo build --target ${{ matrix.target.arch }}-unknown-linux-${{ matrix.target.abi }}
 
       # Cross to run the tests
       - name: Install cross
         run: cargo install cross
       
       - name: Test
-        run: cross test --target ${{ matrix.target }}-unknown-linux-musl
+        run: cross test --target ${{ matrix.target.arch }}-unknown-linux-${{ matrix.target.abi }}
