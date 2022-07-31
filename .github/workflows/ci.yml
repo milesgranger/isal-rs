@@ -31,7 +31,7 @@ jobs:
       - name: System installs
         run: |
           sudo apt update
-          sudo apt install -y gcc-multilib clang
+          sudo apt install -y gcc-multilib
 
       - name: Build ISA-L (aarch64, x86_64)
         if: ${{ !startsWith(matrix.arch, 'powerpc64le') }} 
@@ -59,12 +59,11 @@ jobs:
         with:
           key: ${{ matrix.arch }}-linux-${{ matrix.abi }}
 
-      - name: Build
-        run: cargo build --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
-
-      # Cross to run the tests
       - name: Install cross
         run: cargo install cross
+
+      - name: Build
+        run: cross build --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
       
       - name: Test
         run: cross test --target ${{ matrix.arch }}-unknown-linux-${{ matrix.abi }}
