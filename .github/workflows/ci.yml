@@ -21,12 +21,9 @@ jobs:
         with:
           submodules: recursive
 
-      # musl.cc keeps timing out, use docker instead
-      #- name: Setup musl
-      #  run: |
-      #    wget http://musl.cc/${{ matrix.target }}-linux-musl-cross.tgz
-      #    tar -xz -f ${{ matrix.target }}-linux-musl-cross.tgz 
-      #    echo "PATH=$PATH:$(pwd)/${{ matrix.target }}-linux-musl-cross/bin" >> $GITHUB_ENV
+      - name: System installs
+        run: |
+          apt install -y gcc-multilib
 
       - name: Build ISA-L
         run: |
