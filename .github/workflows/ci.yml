@@ -23,6 +23,7 @@ jobs:
 
       - name: System installs
         run: |
+          apt update
           apt install -y gcc-multilib
 
       - name: Build ISA-L
