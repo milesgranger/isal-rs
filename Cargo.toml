@@ -1,11 +1,17 @@
-[workspace]
-members = [
-    "isal-sys",
-    "isal-rs"
-]
+[package]
+name = "isal-rs"
+version = "0.1.0+62519d9"
+edition = "2021"
 
-[profile.release]
-lto = "fat"
-codegen-units = 1
-opt-level = 3
-debug = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+isal-sys = { path = "isal-sys" }
+
+[dev-dependencies]
+criterion = "0.3"
+md5 = "0.7.0"
+
+[[bench]]
+name = "igzip"
+path = "benches/igzip.rs"
+harness = false

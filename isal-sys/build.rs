@@ -25,7 +25,7 @@ fn main() {
             std::env::var("ISAL_INSTALL_PREFIX").unwrap_or(out_dir_str.to_owned());
         let install_path = Path::new(&install_path_str).join("isa-l");
 
-        let _c_flags = std::env::var("CFLAGS").unwrap_or("".to_string());
+        let c_flags = std::env::var("CFLAGS").unwrap_or("".to_string());
 
         let current_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&install_path).unwrap();
@@ -34,7 +34,13 @@ fn main() {
         let cmd = Command::new("make")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .args(["-f", "Makefile.unx"])
+            .args([
+                "install",
+                &format!("prefix={}", install_path.display()),
+                "-f",
+                "Makefile.unx",
+                &format!("CFLAGS_=-fPIC"),
+            ])
             .spawn();
         std::env::set_current_dir(&current_dir).unwrap();
 
@@ -50,14 +56,9 @@ fn main() {
             println!("cargo:rustc-link-lib=gcc");
         }
 
-        let search_path = install_path.join("bin");
-        println!("cargo:rustc-link-search=native={}", search_path.display());
-
-        // generates "isa-l.a" without lib prefix; copy it over
-        if cfg!(feature = "static") {
-            let static_lib = search_path.join("isa-l.a");
-            let static_lib_out = search_path.join("libisal.a");
-            std::fs::copy(static_lib, static_lib_out).unwrap();
+        for subdir in ["bin", "lib", "lib64"] {
+            let search_path = install_path.join("install").join(subdir);
+            println!("cargo:rustc-link-search=native={}", search_path.display());
         }
     }
 
@@ -87,10 +88,10 @@ fn main() {
             .blocklist_type("__uint64_t_")
             .blocklist_type("__size_t")
             // .blocklist_item("BLOSC2_[C|D]PARAMS_DEFAULTS")
-            .allowlist_type(".*ISAL.*")
-            .allowlist_type(".*isal.*")
-            .allowlist_function(".*isal.*")
-            .allowlist_var(".*ISAL.*")
+            // .allowlist_type(".*ISAL.*")
+            // .allowlist_type(".*isal.*")
+            // .allowlist_function(".*isal.*")
+            // .allowlist_var(".*ISAL.*")
             // Replaced by libc::FILE
             .blocklist_type("FILE")
             .blocklist_type("_IO_FILE")
@@ -105,7 +106,7 @@ fn main() {
             // etc
             .blocklist_type("__time_t")
             .blocklist_type("__syscall_slong_t")
-            .blocklist_type("__off64_t")
+            // .blocklist_type("__off64_t")
             .blocklist_type("__off_t")
             .size_t_is_usize(true)
             // .no_default("_[c|d]params")

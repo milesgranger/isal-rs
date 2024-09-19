@@ -4,7 +4,7 @@ version = "0.1.0+62519d9"
 edition = "2021"
 
 [features]
-default = ["static"]
+default = ["shared", "regenerate-bindings"]
 static = []
 shared = []
 
@@ -14,9 +14,7 @@ regenerate-bindings = ["dep:bindgen"]
 [dependencies]
 
 [build-dependencies]
-# cc = "^1"
 bindgen = { version = "^0.69", optional = true }
-# pkg-config = { version = "^0.3", optional = true }
 copy_dir = "0.1.3"
 
 

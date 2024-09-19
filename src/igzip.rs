@@ -1,9 +1,10 @@
 use std::io;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::os::raw::c_int;
 
 pub(crate) use crate::error::{Error, Result};
-use isal_sys as isal;
+use isal_sys::igzip_lib as isal;
 
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
@@ -148,6 +149,8 @@ pub enum CompressionLevel {
 }
 
 pub mod read {
+
+    use mem::MaybeUninit;
 
     use super::*;
 
@@ -361,8 +364,10 @@ pub mod read {
                 self.zst.avail_in = self.inner.read(&mut self.in_buf)? as _;
                 self.zst.next_in = self.in_buf.as_mut_ptr();
 
-                let mut gz_hdr = isal::isal_gzip_header::default();
-                unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
+                // let mut gz_hdr = isal::isal_gzip_header::default();
+                let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
+                unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+                let mut gz_hdr = unsafe { gz_hdr.assume_init() };
 
                 let mut n_bytes = 0;
                 while self.zst.avail_in != 0 {
@@ -570,8 +575,9 @@ pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
     zst.next_in = input.as_ptr() as *mut _;
     zst.crc_flag = 1;
 
-    let mut gz_hdr = isal::isal_gzip_header::default();
-    unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
+    let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
+    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
 
     let mut buf = Vec::with_capacity(BUF_SIZE);
     let mut n_bytes = 0;
