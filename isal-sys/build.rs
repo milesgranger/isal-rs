@@ -13,9 +13,6 @@ fn main() {
         let out_dir_str = std::env::var("OUT_DIR").unwrap();
         let out_dir = Path::new(&out_dir_str);
 
-        // The configure step modifies the config.h.in file into c-blosc2/config.h
-        // which violates the cargo publishing/build as it modifies things outside
-        // of the crate's out dir; so we'll copy everything into out/c-blosc2
         let src_dir = out_dir.join("isa-l");
         if !src_dir.exists() {
             copy_dir::copy_dir("isa-l", &src_dir).unwrap();
@@ -24,8 +21,6 @@ fn main() {
         let install_path_str =
             std::env::var("ISAL_INSTALL_PREFIX").unwrap_or(out_dir_str.to_owned());
         let install_path = Path::new(&install_path_str).join("isa-l");
-
-        let c_flags = std::env::var("CFLAGS").unwrap_or("".to_string());
 
         let current_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&install_path).unwrap();
@@ -39,7 +34,7 @@ fn main() {
                 &format!("prefix={}", install_path.display()),
                 "-f",
                 "Makefile.unx",
-                &format!("CFLAGS_=-fPIC"),
+                &format!("CFLAGS_=-fPIC -O3"),
             ])
             .spawn();
         std::env::set_current_dir(&current_dir).unwrap();
@@ -57,7 +52,7 @@ fn main() {
         }
 
         for subdir in ["bin", "lib", "lib64"] {
-            let search_path = install_path.join("install").join(subdir);
+            let search_path = install_path.join(subdir);
             println!("cargo:rustc-link-search=native={}", search_path.display());
         }
     }
