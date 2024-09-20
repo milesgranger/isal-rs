@@ -567,7 +567,7 @@ pub fn compress_into(
 pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<Vec<u8>> {
     let mut zstream = ZStream::new_stateful();
 
-    zstream.0.end_of_stream = 1;
+    zstream.0.end_of_stream = 0;
     zstream.0.flush = FlushFlags::NoFlush as _;
 
     zstream.0.level = level as _;
@@ -591,6 +591,7 @@ pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<
 
         zstream.0.avail_out = BUF_SIZE as _;
         zstream.0.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+        zstream.0.end_of_stream = (n_bytes + BUF_SIZE >= buf.len()) as _;
 
         zstream.deflate_stateful()?;
 
