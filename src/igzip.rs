@@ -396,6 +396,7 @@ pub mod read {
 
                         let state = self.zst.block_state();
                         if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                            || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
                             || state == isal::isal_block_state_ISAL_BLOCK_HDR
                             || state == isal::isal_block_state_ISAL_BLOCK_FINISH
                         {
@@ -481,7 +482,7 @@ pub mod read {
         #[test]
         fn basic_decompress() -> Result<()> {
             let input = b"hello, world!";
-            let compressed = compress(input, CompressionLevel::Three, true)?;
+            let compressed = compress(Cursor::new(input), CompressionLevel::Three, true)?;
 
             let mut decoder = Decoder::new(compressed.as_slice());
             let mut decompressed = vec![];
@@ -610,35 +611,15 @@ pub fn compress_into(
 
 /// Compress `input`
 #[inline(always)]
-pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<Vec<u8>> {
-    let mut zstream = ZStream::new_stateful(level);
-
-    zstream.stream.end_of_stream = 0;
-    zstream.stream.flush = FlushFlags::NoFlush as _;
-
-    zstream.stream.gzip_flag = is_gzip as _;
-
-    // TODO: impl level one condition: https://github.com/intel/isa-l/blob/62519d97ec8242dce393a1f81593f4f67da3ac92/igzip/igzip_example.c#L70
-    // read input into buffer
-    zstream.stream.avail_in = input.len() as _;
-    zstream.stream.next_in = input.as_ptr() as *mut _;
-
-    // compress input
-    let mut buf = Vec::with_capacity(BUF_SIZE);
-    let mut n_bytes = 0;
-    while zstream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
-        buf.resize(buf.len() + BUF_SIZE, 0);
-
-        zstream.stream.avail_out = BUF_SIZE as _;
-        zstream.stream.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-        zstream.stream.end_of_stream = (n_bytes + BUF_SIZE >= buf.len()) as _;
-
-        zstream.deflate_stateful()?;
-
-        n_bytes += BUF_SIZE - zstream.stream.avail_out as usize;
-    }
-    buf.truncate(n_bytes);
-    Ok(buf)
+pub fn compress<R: std::io::Read>(
+    input: R,
+    level: CompressionLevel,
+    is_gzip: bool,
+) -> Result<Vec<u8>> {
+    let mut out = vec![];
+    let mut encoder = read::Encoder::new(input, level, is_gzip);
+    io::copy(&mut encoder, &mut out)?;
+    Ok(out)
 }
 
 pub struct InflateState(isal::inflate_state);
@@ -676,14 +657,6 @@ impl InflateState {
     }
 }
 
-#[inline(always)]
-pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
-    let mut out = vec![];
-    let mut decoder = read::Decoder::new(input);
-    io::copy(&mut decoder, &mut out)?;
-    Ok(out)
-}
-
 /// Read and return gzip header information
 ///
 /// On entry state must be initialized and next_in pointing to a gzip compressed
@@ -702,6 +675,14 @@ pub fn read_gzip_header(
         DecompressionReturnValues::DecompOk => Ok(()),
         r => Err(Error::DecompressionError(r)),
     }
+}
+
+#[inline(always)]
+pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
+    let mut out = vec![];
+    let mut decoder = read::Decoder::new(input);
+    io::copy(&mut decoder, &mut out)?;
+    Ok(out)
 }
 
 #[inline(always)]
@@ -763,7 +744,7 @@ mod tests {
     #[test]
     fn basic_compress() -> Result<()> {
         let data = get_data()?;
-        let output = compress(&data, CompressionLevel::Three, true)?;
+        let output = compress(Cursor::new(data), CompressionLevel::Three, true)?;
         println!(
             "n_bytes: {:?}",
             &output[..std::cmp::min(output.len() - 1, 100)]
@@ -801,7 +782,7 @@ mod tests {
     fn larger_decompress() -> Result<()> {
         /* Decompress data which is larger than BUF_SIZE */
         let data = get_data()?;
-        let compressed = compress(&data, CompressionLevel::Three, true)?;
+        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, true)?;
         let decompressed = decompress(Cursor::new(compressed))?;
         assert!(same_same(&data, &decompressed));
         Ok(())
@@ -824,7 +805,7 @@ mod tests {
     #[test]
     fn basic_round_trip() -> Result<()> {
         let data = b"hello, world!";
-        let compressed = compress(data, CompressionLevel::Three, true)?;
+        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, true)?;
         let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, data);
         Ok(())
@@ -834,7 +815,7 @@ mod tests {
     fn basic_round_trip_into() -> Result<()> {
         let data = b"hello, world!".to_vec();
 
-        let compressed_len = compress(&data, CompressionLevel::Three, true)?.len();
+        let compressed_len = compress(Cursor::new(&data), CompressionLevel::Three, true)?.len();
         let decompressed_len = data.len();
 
         let mut compressed = vec![0; compressed_len];
@@ -857,7 +838,7 @@ mod tests {
     fn large_round_trip_into() -> Result<()> {
         let data = gen_large_data();
 
-        let compressed_len = compress(&data, CompressionLevel::Three, true)?.len();
+        let compressed_len = compress(Cursor::new(&data), CompressionLevel::Three, true)?.len();
         let decompressed_len = data.len();
 
         let mut compressed = vec![0; compressed_len];
