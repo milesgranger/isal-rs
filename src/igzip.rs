@@ -1,6 +1,5 @@
 use std::io;
 use std::mem;
-use std::mem::MaybeUninit;
 
 pub(crate) use crate::error::{Error, Result};
 use isal_sys::igzip_lib as isal;
@@ -192,7 +191,7 @@ pub mod read {
     /// let n = io::copy(&mut encoder, &mut compressed).unwrap();
     /// assert_eq!(n as usize, compressed.len());
     ///
-    /// let decompressed = decompress(&compressed).unwrap();
+    /// let decompressed = decompress(io::Cursor::new(compressed)).unwrap();
     /// assert_eq!(decompressed.as_slice(), data);
     /// ```
     pub struct Encoder<R: io::Read> {
@@ -678,43 +677,11 @@ impl InflateState {
 }
 
 #[inline(always)]
-pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
-    let mut zst = InflateState::new();
-    zst.0.avail_in = input.len() as _;
-    zst.0.next_in = input.as_ptr() as *mut _;
-    zst.0.crc_flag = 1;
-
-    let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
-    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
-    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
-
-    let mut buf = Vec::with_capacity(BUF_SIZE);
-    let mut n_bytes = 0;
-
-    while zst.0.avail_in != 0 {
-        // Ensure reset for next member (if exists; not on first iteration)
-        if n_bytes > 0 {
-            zst.reset()
-        }
-
-        // Read this member's gzip header
-        read_gzip_header(&mut zst.0, &mut gz_hdr)?;
-
-        // decompress member
-        while zst.0.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
-            buf.resize(buf.len() + BUF_SIZE, 0);
-            zst.0.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-            zst.0.avail_out = BUF_SIZE as _;
-
-            zst.step_inflate()?;
-
-            n_bytes += BUF_SIZE - zst.0.avail_out as usize;
-        }
-    }
-
-    buf.truncate(n_bytes);
-
-    Ok(buf)
+pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
+    let mut out = vec![];
+    let mut decoder = read::Decoder::new(input);
+    io::copy(&mut decoder, &mut out)?;
+    Ok(out)
 }
 
 /// Read and return gzip header information
@@ -755,6 +722,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize> {
 #[cfg(test)]
 mod tests {
 
+    use io::Cursor;
     use md5;
     use std::fs;
 
@@ -810,7 +778,7 @@ mod tests {
             31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
             73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
         ];
-        let decompressed = decompress(&compressed)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, b"hello, world!");
         Ok(())
     }
@@ -834,7 +802,7 @@ mod tests {
         /* Decompress data which is larger than BUF_SIZE */
         let data = get_data()?;
         let compressed = compress(&data, CompressionLevel::Three, true)?;
-        let decompressed = decompress(&compressed)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert!(same_same(&data, &decompressed));
         Ok(())
     }
@@ -848,7 +816,7 @@ mod tests {
         ];
         compressed.extend(compressed.clone());
 
-        let decompressed = decompress(&compressed)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
     }
@@ -857,7 +825,7 @@ mod tests {
     fn basic_round_trip() -> Result<()> {
         let data = b"hello, world!";
         let compressed = compress(data, CompressionLevel::Three, true)?;
-        let decompressed = decompress(&compressed)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, data);
         Ok(())
     }
