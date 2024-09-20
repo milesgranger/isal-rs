@@ -727,6 +727,14 @@ mod tests {
 
     use super::*;
 
+    // Default testing data
+    fn gen_large_data() -> Vec<u8> {
+        (0..1_000_000)
+            .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
+            .flat_map(|v| v)
+            .collect()
+    }
+
     fn same_same(a: &[u8], b: &[u8]) -> bool {
         md5::compute(a) == md5::compute(b)
     }
@@ -834,6 +842,29 @@ mod tests {
         // compress_into
         let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
         assert_eq!(n_bytes, compressed_len);
+
+        // decompress_into
+        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        assert_eq!(n_bytes, decompressed_len);
+
+        // round trip output matches original input
+        assert!(same_same(&data, &decompressed));
+        Ok(())
+    }
+
+    #[test]
+    fn large_round_trip_into() -> Result<()> {
+        let data = gen_large_data();
+
+        let compressed_len = compress(&data, CompressionLevel::Three, true)?.len();
+        let decompressed_len = data.len();
+
+        let mut compressed = vec![0; compressed_len];
+        let mut decompressed = vec![0; decompressed_len];
+
+        // compress_into
+        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
+        assert!(n_bytes < data.len());
 
         // decompress_into
         let n_bytes = decompress_into(&compressed, &mut decompressed)?;
