@@ -1,6 +1,6 @@
 use std::fs;
 
-use isal_rs::igzip;
+use isal::igzip;
 
 fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
     fs::read(format!(
