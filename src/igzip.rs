@@ -375,17 +375,16 @@ pub mod read {
 
                 let mut n_bytes = 0;
                 while self.zst.0.avail_in != 0 {
-                    if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                    if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
                         // Read this member's gzip header
                         let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
                         unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
                         let mut gz_hdr = unsafe { gz_hdr.assume_init() };
                         read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
-                        println!("State: {:?}", self.zst.0.block_state);
                     }
 
                     // decompress member
-                    while self.zst.0.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
+                    loop {
                         self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
                         self.zst.0.next_out =
@@ -395,8 +394,11 @@ pub mod read {
                         self.zst.step_inflate()?;
 
                         n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
-                        if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_CODED
-                            || self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_HDR
+
+                        let state = self.zst.block_state();
+                        if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                            || state == isal::isal_block_state_ISAL_BLOCK_HDR
+                            || state == isal::isal_block_state_ISAL_BLOCK_FINISH
                         {
                             break;
                         }
@@ -648,6 +650,10 @@ impl InflateState {
         unsafe { isal::isal_inflate_init(uninit.as_mut_ptr()) };
         let state = unsafe { uninit.assume_init() };
         Self(state)
+    }
+
+    pub fn block_state(&self) -> u32 {
+        self.0.block_state
     }
 
     pub fn reset(&mut self) {
