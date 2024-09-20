@@ -68,7 +68,7 @@ impl TryFrom<i32> for CompressionReturnValues {
 }
 
 /// Decompression return values
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(i8)]
 pub enum DecompressionReturnValues {
     DecompOk = isal::ISAL_DECOMP_OK as _, /* No errors encountered while decompressing */
@@ -326,12 +326,12 @@ pub mod read {
     impl<R: io::Read> Decoder<R> {
         pub fn new(reader: R) -> Decoder<R> {
             let mut zst = InflateState::new();
-            zst.0.crc_flag = 1;
+            zst.0.crc_flag = isal::IGZIP_GZIP;
 
             Self {
                 inner: reader,
                 zst,
-                in_buf: [0_u8; BUF_SIZE],
+                in_buf: [0u8; BUF_SIZE],
                 out_buf: Vec::with_capacity(BUF_SIZE),
                 dste: 0,
                 dsts: 0,
@@ -373,24 +373,20 @@ pub mod read {
                 self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
                 self.zst.0.next_in = self.in_buf.as_mut_ptr();
 
-                // let mut gz_hdr = isal::isal_gzip_header::default();
-                let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
-                unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
-                let mut gz_hdr = unsafe { gz_hdr.assume_init() };
-
                 let mut n_bytes = 0;
                 while self.zst.0.avail_in != 0 {
-                    // Ensure reset for next member (if exists; not on first iteration)
-                    if n_bytes > 0 {
-                        self.zst.reset();
+                    if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                        // Read this member's gzip header
+                        let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
+                        unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+                        let mut gz_hdr = unsafe { gz_hdr.assume_init() };
+                        read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
+                        println!("State: {:?}", self.zst.0.block_state);
                     }
-
-                    // Read this member's gzip header
-                    read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
 
                     // decompress member
                     while self.zst.0.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
-                        self.out_buf.resize(self.out_buf.len() + BUF_SIZE, 0);
+                        self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
                         self.zst.0.next_out =
                             self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
@@ -399,6 +395,14 @@ pub mod read {
                         self.zst.step_inflate()?;
 
                         n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
+                        if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_CODED
+                            || self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_HDR
+                        {
+                            break;
+                        }
+                    }
+                    if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                        self.zst.reset();
                     }
                 }
                 self.out_buf.truncate(n_bytes);
@@ -415,6 +419,29 @@ pub mod read {
 
         use super::*;
         use std::io::{self, Cursor};
+
+        fn gen_large_data() -> Vec<u8> {
+            (0..1_000_000)
+                .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
+                .flat_map(|v| v)
+                .collect()
+        }
+
+        #[test]
+        fn large_roundtrip() {
+            let input = gen_large_data();
+            let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+            let mut output = vec![];
+
+            let n = io::copy(&mut encoder, &mut output).unwrap();
+            assert!(n < input.len() as u64);
+
+            let mut decoder = Decoder::new(Cursor::new(output));
+            let mut decompressed = vec![];
+            let nbytes = io::copy(&mut decoder, &mut decompressed).unwrap();
+
+            assert_eq!(nbytes as usize, input.len());
+        }
 
         #[test]
         fn basic_compress() -> Result<()> {
