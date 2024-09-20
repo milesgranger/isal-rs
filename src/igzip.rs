@@ -148,6 +148,24 @@ pub enum CompressionLevel {
     Three = 3,
 }
 
+impl TryFrom<isize> for CompressionLevel {
+    type Error = crate::error::Error;
+    fn try_from(value: isize) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Zero),
+            1 => Ok(Self::One),
+            3 => Ok(Self::Three),
+            _ => Err(Self::Error::Other((
+                None,
+                format!(
+                    "Compression level {} not supported, must be one of [0, 1, 3]",
+                    value
+                ),
+            ))),
+        }
+    }
+}
+
 pub mod read {
 
     use mem::MaybeUninit;

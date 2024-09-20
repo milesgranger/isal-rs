@@ -25,7 +25,7 @@ fn main() {
         let current_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&install_path).unwrap();
 
-        // TODO: support 'nmake' for windows
+        // TODO: support 'nmake' for windows and aarch64 target
         let cmd = Command::new("make")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
