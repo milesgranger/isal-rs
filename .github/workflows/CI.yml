@@ -56,7 +56,7 @@ jobs:
         uses: mymindstorm/setup-emsdk@v14
 
       - name: Build
-        run: cargo build --target wasm32-unknown-emscripten --no-default-features --features regenerate-bindings --features ${{ matrix.build }}
+        run: cargo build --target wasm32-unknown-emscripten --no-default-features --features ${{ matrix.build }}
 
   test-native:
     runs-on: ${{ matrix.os }}
@@ -83,8 +83,12 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1.6.0
 
+      - name: Install build deps (OSX)
+        if: runner.os == 'macOS'
+        run: brew install automake autoconf coreutils libtool
+
       - name: Test (shared)
-        run: cargo test --features shared --lib --release
+        run: cargo test --no-default-features --features shared --lib --release
 
       - name: Test (static)
         run: |
