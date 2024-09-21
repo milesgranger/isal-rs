@@ -85,7 +85,7 @@ jobs:
 
       - name: Install build deps (OSX)
         if: runner.os == 'macOS'
-        run: brew install automake autoconf coreutils libtool
+        run: brew install automake autoconf coreutils libtool gcc
 
       - name: Test (shared)
         run: cargo test --no-default-features --features shared --lib --release

@@ -106,7 +106,7 @@ fn main() {
 
     #[allow(unused_variables)]
     let libname = if cfg!(target_os = "windows") {
-        "libisal"
+        "isal"
     } else {
         "isal"
     };
