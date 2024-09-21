@@ -107,7 +107,7 @@ fn main() {
 
     #[allow(unused_variables)]
     let libname = if cfg!(target_os = "windows") {
-        "libisal"
+        "isa-l"
     } else {
         "isal"
     };
@@ -124,7 +124,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static={}", libname);
 
     #[cfg(feature = "shared")]
-    println!("cargo:rustc-link-lib=isal");
+    println!("cargo:rustc-link-lib={}", libname);
 
     #[cfg(feature = "regenerate-bindings")]
     {
