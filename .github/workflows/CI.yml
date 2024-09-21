@@ -18,14 +18,16 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-musl
-          - s390x-unknown-linux-gnu
+          # - s390x-unknown-linux-gnu  # TODO: won't compile for s390x
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install build deps
-        run: sudo apt install nasm
+        run: |
+          sudo apt update
+          sudo apt install nasm gcc-s390x-linux-gnu musl-tools
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

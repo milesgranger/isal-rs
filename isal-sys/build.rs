@@ -53,6 +53,12 @@ fn main() {
         if target.starts_with("wasm32") {
             configure_args.push("CC=emcc".to_string());
         }
+        if target == "s390x-unknown-linux-gnu" {
+            configure_args.push("CC=s390x-linux-gnu-gcc".to_string());
+        }
+        if target == "x86_64-unknown-linux-musl" {
+            configure_args.push("CC=musl-gcc".to_string());
+        }
         if !cfg!(target_os = "macos") {
             let ldflag = if is_static { "static" } else { "shared" };
             configure_args.push(format!("LDFLAGS=-{}", ldflag));
