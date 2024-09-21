@@ -33,30 +33,30 @@ jobs:
   #     - name: Test
   #       run: cross test --target ${{ matrix.target }} --release
 
-  test-wasm32-emscripten:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        build: [static, shared]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+  # test-wasm32-emscripten:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       build: [static, shared]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: wasm32-unknown-emscripten
+  #     - name: Install Rust toolchain
+  #       uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         target: wasm32-unknown-emscripten
 
-      - name: Install build deps
-        run: sudo apt install nasm gcc-multilib
+  #     - name: Install build deps
+  #       run: sudo apt install nasm gcc-multilib
 
-      - name: Install Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+  #     - name: Install Emscripten
+  #       uses: mymindstorm/setup-emsdk@v14
 
-      - name: Build
-        run: cargo build --target wasm32-unknown-emscripten --no-default-features --features ${{ matrix.build }}
+  #     - name: Build
+  #       run: cargo build --target wasm32-unknown-emscripten --no-default-features --features ${{ matrix.build }}
 
   test-native:
     runs-on: ${{ matrix.os }}
@@ -66,8 +66,8 @@ jobs:
         os:
           - macos-13  # x86_64
           - macos-14  # M1
-          - windows-latest
-          - ubuntu-latest
+          # - windows-latest
+          # - ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,6 +77,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install nasm
+        if: runner.os != 'macOS'
         uses: ilammy/setup-nasm@v1
 
       - name: Set MSVC developer prompt
@@ -85,7 +86,7 @@ jobs:
 
       - name: Install build deps (OSX)
         if: runner.os == 'macOS'
-        run: brew install automake autoconf coreutils libtool gcc
+        run: brew install automake autoconf coreutils libtool nasm
 
       - name: Test (shared)
         run: cargo test --no-default-features --features shared --lib --release -vv

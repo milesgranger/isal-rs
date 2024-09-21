@@ -43,20 +43,20 @@ fn main() {
 
         let mut configure_args = vec![
             format!("--prefix={}", install_path.display()),
+            format!("--host={}", target),
             format!("--enable-static={}", if is_static { "yes" } else { "no" }),
             format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
-            format!("--host={}", target),
-            format!("LDFLAGS=-{}", if is_static { "static" } else { "shared" }),
-            format!("CC=gcc"),
-            "--with-pic=yes".to_string(),
         ];
+        let opt = if profile == "release" { "-O3" } else { "-O1" };
+        configure_args.push(format!("CFLAGS=-g {}", opt));
+
         if target.starts_with("wasm32") {
             configure_args.push("CC=emcc".to_string());
         }
-        if profile == "release" {
-            configure_args.push("CFLAGS=-g -O3".to_string());
-        } else {
-            configure_args.push("CFLAGS=-g -O1".to_string());
+        if !cfg!(target_os = "macos") {
+            let ldflag = if is_static { "static" } else { "shared" };
+            configure_args.push(format!("LDFLAGS=-{}", ldflag));
+            configure_args.push("--with-pic=yes".to_string());
         }
 
         let status = Command::new("./configure")
@@ -72,7 +72,7 @@ fn main() {
         }
 
         Command::new("make")
-            .args(["install-libLTLIBRARIES"])
+            .args(&["install-libLTLIBRARIES"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -109,20 +109,11 @@ fn main() {
         }
     }
 
-    #[allow(unused_variables)]
     let libname = if cfg!(target_os = "windows") {
         "isa-l"
     } else {
         "isal"
     };
-
-    if cfg!(target_os = "windows") {
-        for entry in std::fs::read_dir(install_path).unwrap() {
-            let entry = entry.unwrap();
-            let path = entry.path();
-            println!("{}", path.display());
-        }
-    }
 
     #[cfg(feature = "static")]
     println!("cargo:rustc-link-lib=static={}", libname);
