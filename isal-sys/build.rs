@@ -59,6 +59,10 @@ fn main() {
             configure_args.push("CFLAGS=-g -O1".to_string());
         }
 
+        if cfg!(target_os = "macos") {
+            configure_args.clear();
+        }
+
         let status = Command::new("./configure")
             .args(&configure_args)
             .stdout(Stdio::piped())
@@ -100,9 +104,13 @@ fn main() {
         println!("cargo:rustc-link-lib=gcc");
     }
 
-    for subdir in ["bin", "lib", "lib64"] {
-        let search_path = install_path.join(subdir);
-        println!("cargo:rustc-link-search=native={}", search_path.display());
+    if cfg!(target_os = "windows") {
+        println!("cargo:rustc-link-search=native={}", install_path.display());
+    } else {
+        for subdir in ["bin", "lib", "lib64"] {
+            let search_path = install_path.join(subdir);
+            println!("cargo:rustc-link-search=native={}", search_path.display());
+        }
     }
 
     #[allow(unused_variables)]
