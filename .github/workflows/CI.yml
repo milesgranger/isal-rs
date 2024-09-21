@@ -24,6 +24,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install build deps
+        run: sudo apt install nasm
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
