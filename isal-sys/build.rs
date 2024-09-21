@@ -28,57 +28,63 @@ fn main() {
     let current_dir = std::env::current_dir().unwrap();
     std::env::set_current_dir(&install_path).unwrap();
 
-    let status = Command::new("./autogen.sh")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .unwrap();
-    io::stdout().write_all(&status.stdout).unwrap();
-    io::stderr().write_all(&status.stderr).unwrap();
-    if !status.status.success() {
-        panic!("autogen failed");
-    }
+    #[cfg(not(target_os = "windows"))]
+    let cmd = {
+        let status = Command::new("./autogen.sh")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap();
+        io::stdout().write_all(&status.stdout).unwrap();
+        io::stderr().write_all(&status.stderr).unwrap();
+        if !status.status.success() {
+            panic!("autogen failed");
+        }
 
-    let mut configure_args = vec![
-        format!("--prefix={}", install_path.display()),
-        format!("--enable-static={}", if is_static { "yes" } else { "no" }),
-        format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
-        format!("--host={}", target),
-        format!("LDFLAGS=-{}", if is_static { "static" } else { "shared" }),
-        "--with-pic=yes".to_string(),
-    ];
-    if target.starts_with("wasm32") {
-        configure_args.push("CC=emcc".to_string());
-    }
-    if profile == "release" {
-        configure_args.push("CFLAGS=-g -O3".to_string());
-    } else {
-        configure_args.push("CFLAGS=-g -O1".to_string());
-    }
+        let mut configure_args = vec![
+            format!("--prefix={}", install_path.display()),
+            format!("--enable-static={}", if is_static { "yes" } else { "no" }),
+            format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
+            format!("--host={}", target),
+            format!("LDFLAGS=-{}", if is_static { "static" } else { "shared" }),
+            "--with-pic=yes".to_string(),
+        ];
+        if target.starts_with("wasm32") {
+            configure_args.push("CC=emcc".to_string());
+        }
+        if profile == "release" {
+            configure_args.push("CFLAGS=-g -O3".to_string());
+        } else {
+            configure_args.push("CFLAGS=-g -O1".to_string());
+        }
 
-    let status = Command::new("./configure")
-        .args(&configure_args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .unwrap();
-    io::stdout().write_all(&status.stdout).unwrap();
-    io::stderr().write_all(&status.stderr).unwrap();
-    if !status.status.success() {
-        panic!("configure failed");
-    }
+        let status = Command::new("./configure")
+            .args(&configure_args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap();
+        io::stdout().write_all(&status.stdout).unwrap();
+        io::stderr().write_all(&status.stderr).unwrap();
+        if !status.status.success() {
+            panic!("configure failed");
+        }
 
-    let mut cmd = if cfg!(target_os = "windows") {
-        Command::new("nmake")
-    } else {
         Command::new("make")
+            .args(["install-libLTLIBRARIES"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
     };
 
-    let cmd = cmd
-        .args(["install-libLTLIBRARIES"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        Command::new("nmake")
+            .args(["-f", "Makefile.nmake"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    };
 
     std::env::set_current_dir(&current_dir).unwrap();
 
@@ -123,11 +129,6 @@ fn main() {
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .blocklist_type("__uint64_t_")
             .blocklist_type("__size_t")
-            // .blocklist_item("BLOSC2_[C|D]PARAMS_DEFAULTS")
-            // .allowlist_type(".*ISAL.*")
-            // .allowlist_type(".*isal.*")
-            // .allowlist_function(".*isal.*")
-            // .allowlist_var(".*ISAL.*")
             // Replaced by libc::FILE
             .blocklist_type("FILE")
             .blocklist_type("_IO_FILE")
@@ -145,7 +146,6 @@ fn main() {
             // .blocklist_type("__off64_t")
             .blocklist_type("__off_t")
             .size_t_is_usize(true)
-            // .no_default("_[c|d]params")
             .generate()
             .expect("Unable to generate bindings")
             .write_to_file(out)
