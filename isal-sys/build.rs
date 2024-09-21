@@ -44,7 +44,6 @@ fn main() {
         let mut configure_args = vec![
             format!("--prefix={}", install_path.display()),
             format!("--host={}", target),
-            format!("--build={}", target),
             format!("--enable-static={}", if is_static { "yes" } else { "no" }),
             format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
         ];
