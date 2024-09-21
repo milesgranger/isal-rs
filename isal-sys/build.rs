@@ -44,6 +44,7 @@ fn main() {
         let mut configure_args = vec![
             format!("--prefix={}", install_path.display()),
             format!("--host={}", target),
+            format!("--build={}", target),
             format!("--enable-static={}", if is_static { "yes" } else { "no" }),
             format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
         ];
@@ -96,9 +97,9 @@ fn main() {
         panic!("Building isa-l failed");
     }
 
-    if let Ok(true) = std::env::var("CARGO_CFG_TARGET_ENV").map(|v| v == "musl") {
-        println!("cargo:rustc-link-lib=gcc");
-    }
+    // if let Ok(true) = std::env::var("CARGO_CFG_TARGET_ENV").map(|v| v == "musl") {
+    //     println!("cargo:rustc-link-lib=gcc");
+    // }
 
     if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-search=native={}", install_path.display());
