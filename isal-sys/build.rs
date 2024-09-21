@@ -47,6 +47,7 @@ fn main() {
             format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
             format!("--host={}", target),
             format!("LDFLAGS=-{}", if is_static { "static" } else { "shared" }),
+            format!("CC=gcc"),
             "--with-pic=yes".to_string(),
         ];
         if target.starts_with("wasm32") {
@@ -106,10 +107,18 @@ fn main() {
 
     #[allow(unused_variables)]
     let libname = if cfg!(target_os = "windows") {
-        "isal"
+        "libisal"
     } else {
         "isal"
     };
+
+    if cfg!(target_os = "windows") {
+        for entry in std::fs::read_dir(install_path).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            println!("{}", path.display());
+        }
+    }
 
     #[cfg(feature = "static")]
     println!("cargo:rustc-link-lib=static={}", libname);
