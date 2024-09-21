@@ -11,52 +11,52 @@ on:
       - prereleased
 
 jobs:
-  # test-cross:
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       target:
-  #         - x86_64-unknown-linux-musl
-  #         - s390x-unknown-linux-gnu
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: recursive
+  test-cross:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - s390x-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-  #     - name: Install Rust toolchain
-  #       uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-  #     - name: Install cross
-  #       run: cargo install cross --git https://github.com/cross-rs/cross --rev 6d097fb
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross --rev 6d097fb
 
-  #     - name: Test
-  #       run: cross test --target ${{ matrix.target }} --release
+      - name: Test
+        run: cross test --target ${{ matrix.target }} --release
 
-  # test-wasm32-emscripten:
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       build: [static, shared]
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: recursive
+  test-wasm32-emscripten:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [static, shared]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-  #     - name: Install Rust toolchain
-  #       uses: dtolnay/rust-toolchain@stable
-  #       with:
-  #         target: wasm32-unknown-emscripten
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: wasm32-unknown-emscripten
 
-  #     - name: Install build deps
-  #       run: sudo apt install nasm gcc-multilib
+      - name: Install build deps
+        run: sudo apt install nasm gcc-multilib
 
-  #     - name: Install Emscripten
-  #       uses: mymindstorm/setup-emsdk@v14
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
 
-  #     - name: Build
-  #       run: cargo build --target wasm32-unknown-emscripten --no-default-features --features ${{ matrix.build }}
+      - name: Build
+        run: cargo build --target wasm32-unknown-emscripten --no-default-features --features ${{ matrix.build }}
 
   test-native:
     runs-on: ${{ matrix.os }}
@@ -65,9 +65,9 @@ jobs:
       matrix:
         os:
           - macos-13  # x86_64
-          - macos-14  # M1
-          # - windows-latest
-          # - ubuntu-latest
+          - macos-14  # arm
+          - windows-latest
+          - ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
