@@ -4,7 +4,7 @@ version = "0.1.0+62519d9"
 edition = "2021"
 
 [features]
-default = ["static", "regenerate-bindings"]
+default = ["static"]
 static = []
 shared = []
 

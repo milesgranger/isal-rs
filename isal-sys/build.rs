@@ -1,60 +1,101 @@
-#[cfg(feature = "regenerate-bindings")]
 use std::path::PathBuf;
 use std::{
     io::{self, Write},
-    path::Path,
     process::{Command, Stdio},
 };
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    {
-        let out_dir_str = std::env::var("OUT_DIR").unwrap();
-        let out_dir = Path::new(&out_dir_str);
+    let is_static = cfg!(feature = "static");
+    let is_shared = cfg!(feature = "shared");
+    let target = std::env::var("TARGET").unwrap();
+    let profile = std::env::var("PROFILE").unwrap();
+    let out_dir = PathBuf::from(&std::env::var("OUT_DIR").unwrap());
 
-        let src_dir = out_dir.join("isa-l");
-        if !src_dir.exists() {
-            copy_dir::copy_dir("isa-l", &src_dir).unwrap();
-        }
+    // Copy isa-l source into out; not allow to modify things outside of out dir
+    let src_dir = out_dir.join("isa-l");
+    if src_dir.exists() {
+        std::fs::remove_dir_all(&src_dir).unwrap(); // maybe from a previous build
+    }
+    copy_dir::copy_dir("isa-l", &src_dir).unwrap();
 
-        let install_path_str =
-            std::env::var("ISAL_INSTALL_PREFIX").unwrap_or(out_dir_str.to_owned());
-        let install_path = Path::new(&install_path_str).join("isa-l");
+    let install_path = std::env::var("ISAL_INSTALL_PREFIX")
+        .map(|p| PathBuf::from(&p).clone())
+        .unwrap_or(out_dir.clone())
+        .join("isa-l");
 
-        let current_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&install_path).unwrap();
+    let current_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&install_path).unwrap();
 
-        // TODO: support 'nmake' for windows and aarch64 target
-        let cmd = Command::new("make")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .args([
-                "install",
-                &format!("prefix={}", install_path.display()),
-                "-f",
-                "Makefile.unx",
-                &format!("CFLAGS_=-fPIC -O3"),
-            ])
-            .spawn();
-        std::env::set_current_dir(&current_dir).unwrap();
+    let status = Command::new("./autogen.sh")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    io::stdout().write_all(&status.stdout).unwrap();
+    io::stderr().write_all(&status.stderr).unwrap();
+    if !status.status.success() {
+        panic!("autogen failed");
+    }
 
-        let output = cmd.unwrap().wait_with_output().unwrap();
-        io::stdout().write_all(&output.stdout).unwrap();
-        io::stderr().write_all(&output.stderr).unwrap();
-        if !output.status.success() {
-            panic!("Building isa-l failed");
-        }
+    let mut configure_args = vec![
+        format!("--prefix={}", install_path.display()),
+        format!("--enable-static={}", if is_static { "yes" } else { "no" }),
+        format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
+        format!("--host={}", target),
+        format!("LDFLAGS=-{}", if is_static { "static" } else { "shared" }),
+        "--with-pic=yes".to_string(),
+    ];
+    if target.starts_with("wasm32") {
+        configure_args.push("CC=emcc".to_string());
+    }
+    if profile == "release" {
+        configure_args.push("CFLAGS=-g -O3".to_string());
+    } else {
+        configure_args.push("CFLAGS=-g -O1".to_string());
+    }
 
-        // Solves undefined reference to __cpu_model when using __builtin_cpu_supports() in shuffle.c
-        if let Ok(true) = std::env::var("CARGO_CFG_TARGET_ENV").map(|v| v == "musl") {
-            println!("cargo:rustc-link-lib=gcc");
-        }
+    let status = Command::new("./configure")
+        .args(&configure_args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    io::stdout().write_all(&status.stdout).unwrap();
+    io::stderr().write_all(&status.stderr).unwrap();
+    if !status.status.success() {
+        panic!("configure failed");
+    }
 
-        for subdir in ["bin", "lib", "lib64"] {
-            let search_path = install_path.join(subdir);
-            println!("cargo:rustc-link-search=native={}", search_path.display());
-        }
+    let mut cmd = if cfg!(target_os = "windows") {
+        Command::new("nmake")
+    } else {
+        Command::new("make")
+    };
+
+    let cmd = cmd
+        .args(["install-libLTLIBRARIES"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+
+    std::env::set_current_dir(&current_dir).unwrap();
+
+    let output = cmd.unwrap().wait_with_output().unwrap();
+    io::stdout().write_all(&output.stdout).unwrap();
+    io::stderr().write_all(&output.stderr).unwrap();
+    if !output.status.success() {
+        panic!("Building isa-l failed");
+    }
+
+    if let Ok(true) = std::env::var("CARGO_CFG_TARGET_ENV").map(|v| v == "musl") {
+        println!("cargo:rustc-link-lib=gcc");
+    }
+
+    for subdir in ["bin", "lib", "lib64"] {
+        let search_path = install_path.join(subdir);
+        println!("cargo:rustc-link-search=native={}", search_path.display());
     }
 
     #[allow(unused_variables)]
