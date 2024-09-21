@@ -59,10 +59,6 @@ fn main() {
             configure_args.push("CFLAGS=-g -O1".to_string());
         }
 
-        if cfg!(target_os = "macos") {
-            configure_args.clear();
-        }
-
         let status = Command::new("./configure")
             .args(&configure_args)
             .stdout(Stdio::piped())
