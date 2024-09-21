@@ -18,24 +18,18 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-musl
-          # - s390x-unknown-linux-gnu  # TODO: won't compile for s390x
+          - s390x-unknown-linux-gnu  # TODO: won't compile for s390x
+          - aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install build deps
-        run: |
-          sudo apt update
-          sudo apt install nasm gcc-s390x-linux-gnu musl-tools
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: ${{ matrix.target }}
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross --rev 6d097fb
 
       - name: Build
-        run: cargo build --target ${{ matrix.target }} --release
+        run: cross build --target ${{ matrix.target }} --release
 
   test-wasm32-emscripten:
     runs-on: ubuntu-latest

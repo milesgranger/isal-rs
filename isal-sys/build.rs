@@ -10,7 +10,6 @@ fn main() {
     let is_static = cfg!(feature = "static");
     let is_shared = cfg!(feature = "shared");
     let target = std::env::var("TARGET").unwrap();
-    let profile = std::env::var("PROFILE").unwrap();
     let out_dir = PathBuf::from(&std::env::var("OUT_DIR").unwrap());
 
     // Copy isa-l source into out; not allow to modify things outside of out dir
@@ -41,24 +40,18 @@ fn main() {
             panic!("autogen failed");
         }
 
+        let compiler = cc::Build::new().get_compiler();
+        let cflags = compiler.cflags_env().into_string().unwrap();
+
         let mut configure_args = vec![
             format!("--prefix={}", install_path.display()),
             format!("--host={}", target),
             format!("--enable-static={}", if is_static { "yes" } else { "no" }),
             format!("--enable-shared={}", if is_shared { "yes" } else { "no" }),
+            format!("CFLAGS={}", cflags),
+            format!("CC={}", compiler.path().display()),
         ];
-        let opt = if profile == "release" { "-O3" } else { "-O1" };
-        configure_args.push(format!("CFLAGS=-g {}", opt));
 
-        if target.starts_with("wasm32") {
-            configure_args.push("CC=emcc".to_string());
-        }
-        if target == "s390x-unknown-linux-gnu" {
-            configure_args.push("CC=s390x-linux-gnu-gcc".to_string());
-        }
-        if target == "x86_64-unknown-linux-musl" {
-            configure_args.push("CC=musl-gcc".to_string());
-        }
         if !cfg!(target_os = "macos") {
             let ldflag = if is_static { "static" } else { "shared" };
             configure_args.push(format!("LDFLAGS=-{}", ldflag));
