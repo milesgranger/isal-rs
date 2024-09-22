@@ -19,7 +19,7 @@ pub enum FlushFlags {
 /// Compression return values
 #[derive(Copy, Clone, Debug)]
 #[repr(i8)]
-pub enum CompressionReturnValues {
+pub enum CompCode {
     CompOk = isal::COMP_OK as _,
     InvalidFlush = isal::INVALID_FLUSH as _,
     InvalidParam = isal::INVALID_PARAM as _,
@@ -30,34 +30,20 @@ pub enum CompressionReturnValues {
     InvalidLevelBuf = isal::ISAL_INVALID_LEVEL_BUF as _,
 }
 
-impl TryFrom<i32> for CompressionReturnValues {
+impl TryFrom<i32> for CompCode {
     type Error = Error;
 
     #[inline]
     fn try_from(value: i32) -> Result<Self> {
         match value {
-            v if v == CompressionReturnValues::CompOk as i32 => Ok(CompressionReturnValues::CompOk),
-            v if v == CompressionReturnValues::InvalidFlush as i32 => {
-                Ok(CompressionReturnValues::InvalidFlush)
-            }
-            v if v == CompressionReturnValues::InvalidParam as i32 => {
-                Ok(CompressionReturnValues::InvalidParam)
-            }
-            v if v == CompressionReturnValues::StatelessOverflow as i32 => {
-                Ok(CompressionReturnValues::StatelessOverflow)
-            }
-            v if v == CompressionReturnValues::InvalidOperation as i32 => {
-                Ok(CompressionReturnValues::InvalidOperation)
-            }
-            v if v == CompressionReturnValues::InvalidState as i32 => {
-                Ok(CompressionReturnValues::InvalidState)
-            }
-            v if v == CompressionReturnValues::InvalidLevel as i32 => {
-                Ok(CompressionReturnValues::InvalidLevel)
-            }
-            v if v == CompressionReturnValues::InvalidLevelBuf as i32 => {
-                Ok(CompressionReturnValues::InvalidLevelBuf)
-            }
+            v if v == Self::CompOk as i32 => Ok(Self::CompOk),
+            v if v == Self::InvalidFlush as i32 => Ok(Self::InvalidFlush),
+            v if v == Self::InvalidParam as i32 => Ok(Self::InvalidParam),
+            v if v == Self::StatelessOverflow as i32 => Ok(Self::StatelessOverflow),
+            v if v == Self::InvalidOperation as i32 => Ok(Self::InvalidOperation),
+            v if v == Self::InvalidState as i32 => Ok(Self::InvalidState),
+            v if v == Self::InvalidLevel as i32 => Ok(Self::InvalidLevel),
+            v if v == Self::InvalidLevelBuf as i32 => Ok(Self::InvalidLevelBuf),
             _ => Err(Error::Other((
                 Some(value as isize),
                 "Unknown exit code from compression".to_string(),
@@ -69,7 +55,7 @@ impl TryFrom<i32> for CompressionReturnValues {
 /// Decompression return values
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(i8)]
-pub enum DecompressionReturnValues {
+pub enum DecompCode {
     DecompOk = isal::ISAL_DECOMP_OK as _, /* No errors encountered while decompressing */
     EndInput = isal::ISAL_END_INPUT as _, /* End of input reached */
     OutOverflow = isal::ISAL_OUT_OVERFLOW as _, /* End of output reached */
@@ -85,51 +71,25 @@ pub enum DecompressionReturnValues {
     IncorrectChecksum = isal::ISAL_INCORRECT_CHECKSUM as _, /* Incorrect checksum found */
 }
 
-impl TryFrom<i32> for DecompressionReturnValues {
+impl TryFrom<i32> for DecompCode {
     type Error = Error;
 
     #[inline]
     fn try_from(value: i32) -> Result<Self> {
         match value {
-            v if v == DecompressionReturnValues::DecompOk as i32 => {
-                Ok(DecompressionReturnValues::DecompOk)
-            }
-            v if v == DecompressionReturnValues::EndInput as i32 => {
-                Ok(DecompressionReturnValues::EndInput)
-            }
-            v if v == DecompressionReturnValues::OutOverflow as i32 => {
-                Ok(DecompressionReturnValues::OutOverflow)
-            }
-            v if v == DecompressionReturnValues::NameOverflow as i32 => {
-                Ok(DecompressionReturnValues::NameOverflow)
-            }
-            v if v == DecompressionReturnValues::CommentOverflow as i32 => {
-                Ok(DecompressionReturnValues::CommentOverflow)
-            }
-            v if v == DecompressionReturnValues::ExtraOverflow as i32 => {
-                Ok(DecompressionReturnValues::ExtraOverflow)
-            }
-            v if v == DecompressionReturnValues::NeedDict as i32 => {
-                Ok(DecompressionReturnValues::NeedDict)
-            }
-            v if v == DecompressionReturnValues::InvalidBlock as i32 => {
-                Ok(DecompressionReturnValues::InvalidBlock)
-            }
-            v if v == DecompressionReturnValues::InvalidSymbol as i32 => {
-                Ok(DecompressionReturnValues::InvalidSymbol)
-            }
-            v if v == DecompressionReturnValues::InvalidLoopBack as i32 => {
-                Ok(DecompressionReturnValues::InvalidLoopBack)
-            }
-            v if v == DecompressionReturnValues::InvalidWrapper as i32 => {
-                Ok(DecompressionReturnValues::InvalidWrapper)
-            }
-            v if v == DecompressionReturnValues::UnsupportedMethod as i32 => {
-                Ok(DecompressionReturnValues::UnsupportedMethod)
-            }
-            v if v == DecompressionReturnValues::IncorrectChecksum as i32 => {
-                Ok(DecompressionReturnValues::IncorrectChecksum)
-            }
+            v if v == Self::DecompOk as i32 => Ok(Self::DecompOk),
+            v if v == Self::EndInput as i32 => Ok(Self::EndInput),
+            v if v == Self::OutOverflow as i32 => Ok(Self::OutOverflow),
+            v if v == Self::NameOverflow as i32 => Ok(Self::NameOverflow),
+            v if v == Self::CommentOverflow as i32 => Ok(Self::CommentOverflow),
+            v if v == Self::ExtraOverflow as i32 => Ok(Self::ExtraOverflow),
+            v if v == Self::NeedDict as i32 => Ok(Self::NeedDict),
+            v if v == Self::InvalidBlock as i32 => Ok(Self::InvalidBlock),
+            v if v == Self::InvalidSymbol as i32 => Ok(Self::InvalidSymbol),
+            v if v == Self::InvalidLoopBack as i32 => Ok(Self::InvalidLoopBack),
+            v if v == Self::InvalidWrapper as i32 => Ok(Self::InvalidWrapper),
+            v if v == Self::UnsupportedMethod as i32 => Ok(Self::UnsupportedMethod),
+            v if v == Self::IncorrectChecksum as i32 => Ok(Self::IncorrectChecksum),
             _ => Err(Error::Other((
                 Some(value as isize),
                 "Unknown exit code from decompression".to_string(),
@@ -568,16 +528,16 @@ impl ZStream {
 
     pub fn deflate_stateful(&mut self) -> Result<()> {
         let ret = unsafe { isal::isal_deflate(&mut self.stream) };
-        match CompressionReturnValues::try_from(ret)? {
-            CompressionReturnValues::CompOk => Ok(()),
+        match CompCode::try_from(ret)? {
+            CompCode::CompOk => Ok(()),
             r => Err(Error::CompressionError(r)),
         }
     }
 
     pub fn deflate_stateless(&mut self) -> Result<()> {
         let ret = unsafe { isal::isal_deflate_stateless(&mut self.stream) };
-        match CompressionReturnValues::try_from(ret)? {
-            CompressionReturnValues::CompOk => Ok(()),
+        match CompCode::try_from(ret)? {
+            CompCode::CompOk => Ok(()),
             r => Err(Error::CompressionError(r)),
         }
     }
@@ -642,16 +602,16 @@ impl InflateState {
 
     pub fn step_inflate(&mut self) -> Result<()> {
         let ret = unsafe { isal::isal_inflate(&mut self.0) };
-        match DecompressionReturnValues::try_from(ret)? {
-            DecompressionReturnValues::DecompOk => Ok(()),
+        match DecompCode::try_from(ret)? {
+            DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
         }
     }
 
     pub fn inflate_stateless(&mut self) -> Result<()> {
         let ret = unsafe { isal::isal_inflate_stateless(&mut self.0) };
-        match DecompressionReturnValues::try_from(ret)? {
-            DecompressionReturnValues::DecompOk => Ok(()),
+        match DecompCode::try_from(ret)? {
+            DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
         }
     }
@@ -671,8 +631,8 @@ pub fn read_gzip_header(
     gz_hdr: &mut isal::isal_gzip_header,
 ) -> Result<()> {
     let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) };
-    match DecompressionReturnValues::try_from(ret)? {
-        DecompressionReturnValues::DecompOk => Ok(()),
+    match DecompCode::try_from(ret)? {
+        DecompCode::DecompOk => Ok(()),
         r => Err(Error::DecompressionError(r)),
     }
 }

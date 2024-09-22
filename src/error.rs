@@ -1,6 +1,6 @@
 use std::{fmt, io, result};
 
-use crate::igzip::{CompressionReturnValues, DecompressionReturnValues};
+use crate::igzip::{CompCode, DecompCode};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -9,10 +9,10 @@ pub enum Error {
     Io(io::Error),
 
     // isal compression errors
-    CompressionError(CompressionReturnValues),
+    CompressionError(CompCode),
 
     // isal decompression errors
-    DecompressionError(DecompressionReturnValues),
+    DecompressionError(DecompCode),
 
     // Anything else not covered, exit code, message
     Other((Option<isize>, String)),
