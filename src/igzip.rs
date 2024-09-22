@@ -169,7 +169,7 @@ pub mod read {
             let in_buf = [0_u8; BUF_SIZE];
             let out_buf = Vec::with_capacity(BUF_SIZE);
 
-            let mut zstream = ZStream::new_stateful(level);
+            let mut zstream = ZStream::new(level, ZStreamKind::Stateful);
 
             zstream.stream.end_of_stream = 0;
             zstream.stream.flush = FlushFlags::SyncFlush as _;
@@ -235,7 +235,7 @@ pub mod read {
                     self.stream.stream.next_out =
                         self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
 
-                    self.stream.deflate_stateful()?;
+                    self.stream.deflate()?;
 
                     n_bytes += BUF_SIZE - self.stream.stream.avail_out as usize;
                 }
@@ -478,16 +478,29 @@ pub mod read {
     }
 }
 
+pub enum ZStreamKind {
+    Stateful,
+    Stateless,
+}
+
 pub struct ZStream {
     stream: isal::isal_zstream,
     #[allow(dead_code)] // Pointer used by stream, kept here to release when dropped
     level_buf: Vec<u8>,
+    kind: ZStreamKind,
 }
 
 impl ZStream {
-    pub fn new_stateful(level: CompressionLevel) -> Self {
+    pub fn new(level: CompressionLevel, kind: ZStreamKind) -> Self {
         let mut zstream_uninit: mem::MaybeUninit<isal::isal_zstream> = mem::MaybeUninit::uninit();
-        unsafe { isal::isal_deflate_init(zstream_uninit.as_mut_ptr()) };
+        match kind {
+            ZStreamKind::Stateful => unsafe {
+                isal::isal_deflate_init(zstream_uninit.as_mut_ptr())
+            },
+            ZStreamKind::Stateless => unsafe {
+                isal::isal_deflate_stateless_init(zstream_uninit.as_mut_ptr())
+            },
+        }
         let mut zstream = unsafe { zstream_uninit.assume_init() };
         let buf_size = match level {
             CompressionLevel::Zero => isal::ISAL_DEF_LVL0_DEFAULT,
@@ -503,39 +516,16 @@ impl ZStream {
         Self {
             stream: zstream,
             level_buf: buf,
+            kind,
         }
     }
-    pub fn new_stateless(level: CompressionLevel) -> Self {
-        let mut zstream_uninit: mem::MaybeUninit<isal::isal_zstream> = mem::MaybeUninit::uninit();
-        unsafe { isal::isal_deflate_stateless_init(zstream_uninit.as_mut_ptr()) };
-        let mut zstream = unsafe { zstream_uninit.assume_init() };
-        let buf_size = match level {
-            CompressionLevel::Zero => isal::ISAL_DEF_LVL0_DEFAULT,
-            CompressionLevel::One => isal::ISAL_DEF_LVL1_DEFAULT,
-            CompressionLevel::Three => isal::ISAL_DEF_LVL3_DEFAULT,
+    #[inline]
+    pub fn deflate(&mut self) -> Result<()> {
+        let ret = match self.kind {
+            ZStreamKind::Stateful => unsafe { isal::isal_deflate(&mut self.stream) },
+            ZStreamKind::Stateless => unsafe { isal::isal_deflate_stateless(&mut self.stream) },
         };
-        let mut buf = vec![0u8; buf_size as usize];
 
-        zstream.level = level as _;
-        zstream.level_buf = buf.as_mut_ptr();
-        zstream.level_buf_size = buf.len() as _;
-
-        Self {
-            stream: zstream,
-            level_buf: buf,
-        }
-    }
-
-    pub fn deflate_stateful(&mut self) -> Result<()> {
-        let ret = unsafe { isal::isal_deflate(&mut self.stream) };
-        match CompCode::try_from(ret)? {
-            CompCode::CompOk => Ok(()),
-            r => Err(Error::CompressionError(r)),
-        }
-    }
-
-    pub fn deflate_stateless(&mut self) -> Result<()> {
-        let ret = unsafe { isal::isal_deflate_stateless(&mut self.stream) };
         match CompCode::try_from(ret)? {
             CompCode::CompOk => Ok(()),
             r => Err(Error::CompressionError(r)),
@@ -551,7 +541,7 @@ pub fn compress_into(
     level: CompressionLevel,
     is_gzip: bool,
 ) -> Result<usize> {
-    let mut zstream = ZStream::new_stateless(level);
+    let mut zstream = ZStream::new(level, ZStreamKind::Stateless);
 
     zstream.stream.flush = FlushFlags::NoFlush as _;
     zstream.stream.gzip_flag = is_gzip as _;
@@ -565,7 +555,7 @@ pub fn compress_into(
     zstream.stream.avail_out = output.len() as _;
     zstream.stream.next_out = output.as_mut_ptr();
 
-    zstream.deflate_stateless()?;
+    zstream.deflate()?;
     Ok(zstream.stream.total_out as _)
 }
 
