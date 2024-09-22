@@ -95,22 +95,14 @@ fn main() {
         panic!("Building isa-l failed");
     }
 
-    // if let Ok(true) = std::env::var("CARGO_CFG_TARGET_ENV").map(|v| v == "musl") {
-    //     println!("cargo:rustc-link-lib=gcc");
-    // }
-
-    if cfg!(target_os = "windows") {
+    let libname = if cfg!(target_os = "windows") {
         println!("cargo:rustc-link-search=native={}", install_path.display());
+        "isa-l"
     } else {
         for subdir in ["bin", "lib", "lib64"] {
             let search_path = install_path.join(subdir);
             println!("cargo:rustc-link-search=native={}", search_path.display());
         }
-    }
-
-    let libname = if cfg!(target_os = "windows") {
-        "isa-l"
-    } else {
         "isal"
     };
 
