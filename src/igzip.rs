@@ -1,9 +1,8 @@
 use std::io;
 use std::mem;
-use std::os::raw::c_int;
 
 pub(crate) use crate::error::{Error, Result};
-use isal_sys as isal;
+use isal_sys::igzip_lib as isal;
 
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
@@ -31,36 +30,36 @@ pub enum CompressionReturnValues {
     InvalidLevelBuf = isal::ISAL_INVALID_LEVEL_BUF as _,
 }
 
-impl TryFrom<isize> for CompressionReturnValues {
+impl TryFrom<i32> for CompressionReturnValues {
     type Error = Error;
 
     #[inline]
-    fn try_from(value: isize) -> Result<Self> {
+    fn try_from(value: i32) -> Result<Self> {
         match value {
-            v if v == CompressionReturnValues::CompOk as _ => Ok(CompressionReturnValues::CompOk),
-            v if v == CompressionReturnValues::InvalidFlush as _ => {
+            v if v == CompressionReturnValues::CompOk as i32 => Ok(CompressionReturnValues::CompOk),
+            v if v == CompressionReturnValues::InvalidFlush as i32 => {
                 Ok(CompressionReturnValues::InvalidFlush)
             }
-            v if v == CompressionReturnValues::InvalidParam as _ => {
+            v if v == CompressionReturnValues::InvalidParam as i32 => {
                 Ok(CompressionReturnValues::InvalidParam)
             }
-            v if v == CompressionReturnValues::StatelessOverflow as _ => {
+            v if v == CompressionReturnValues::StatelessOverflow as i32 => {
                 Ok(CompressionReturnValues::StatelessOverflow)
             }
-            v if v == CompressionReturnValues::InvalidOperation as _ => {
+            v if v == CompressionReturnValues::InvalidOperation as i32 => {
                 Ok(CompressionReturnValues::InvalidOperation)
             }
-            v if v == CompressionReturnValues::InvalidState as _ => {
+            v if v == CompressionReturnValues::InvalidState as i32 => {
                 Ok(CompressionReturnValues::InvalidState)
             }
-            v if v == CompressionReturnValues::InvalidLevel as _ => {
+            v if v == CompressionReturnValues::InvalidLevel as i32 => {
                 Ok(CompressionReturnValues::InvalidLevel)
             }
-            v if v == CompressionReturnValues::InvalidLevelBuf as _ => {
+            v if v == CompressionReturnValues::InvalidLevelBuf as i32 => {
                 Ok(CompressionReturnValues::InvalidLevelBuf)
             }
             _ => Err(Error::Other((
-                Some(value),
+                Some(value as isize),
                 "Unknown exit code from compression".to_string(),
             ))),
         }
@@ -68,7 +67,7 @@ impl TryFrom<isize> for CompressionReturnValues {
 }
 
 /// Decompression return values
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(i8)]
 pub enum DecompressionReturnValues {
     DecompOk = isal::ISAL_DECOMP_OK as _, /* No errors encountered while decompressing */
@@ -86,53 +85,53 @@ pub enum DecompressionReturnValues {
     IncorrectChecksum = isal::ISAL_INCORRECT_CHECKSUM as _, /* Incorrect checksum found */
 }
 
-impl TryFrom<isize> for DecompressionReturnValues {
+impl TryFrom<i32> for DecompressionReturnValues {
     type Error = Error;
 
     #[inline]
-    fn try_from(value: isize) -> Result<Self> {
+    fn try_from(value: i32) -> Result<Self> {
         match value {
-            v if v == DecompressionReturnValues::DecompOk as _ => {
+            v if v == DecompressionReturnValues::DecompOk as i32 => {
                 Ok(DecompressionReturnValues::DecompOk)
             }
-            v if v == DecompressionReturnValues::EndInput as _ => {
+            v if v == DecompressionReturnValues::EndInput as i32 => {
                 Ok(DecompressionReturnValues::EndInput)
             }
-            v if v == DecompressionReturnValues::OutOverflow as _ => {
+            v if v == DecompressionReturnValues::OutOverflow as i32 => {
                 Ok(DecompressionReturnValues::OutOverflow)
             }
-            v if v == DecompressionReturnValues::NameOverflow as _ => {
+            v if v == DecompressionReturnValues::NameOverflow as i32 => {
                 Ok(DecompressionReturnValues::NameOverflow)
             }
-            v if v == DecompressionReturnValues::CommentOverflow as _ => {
+            v if v == DecompressionReturnValues::CommentOverflow as i32 => {
                 Ok(DecompressionReturnValues::CommentOverflow)
             }
-            v if v == DecompressionReturnValues::ExtraOverflow as _ => {
+            v if v == DecompressionReturnValues::ExtraOverflow as i32 => {
                 Ok(DecompressionReturnValues::ExtraOverflow)
             }
-            v if v == DecompressionReturnValues::NeedDict as _ => {
+            v if v == DecompressionReturnValues::NeedDict as i32 => {
                 Ok(DecompressionReturnValues::NeedDict)
             }
-            v if v == DecompressionReturnValues::InvalidBlock as _ => {
+            v if v == DecompressionReturnValues::InvalidBlock as i32 => {
                 Ok(DecompressionReturnValues::InvalidBlock)
             }
-            v if v == DecompressionReturnValues::InvalidSymbol as _ => {
+            v if v == DecompressionReturnValues::InvalidSymbol as i32 => {
                 Ok(DecompressionReturnValues::InvalidSymbol)
             }
-            v if v == DecompressionReturnValues::InvalidLoopBack as _ => {
+            v if v == DecompressionReturnValues::InvalidLoopBack as i32 => {
                 Ok(DecompressionReturnValues::InvalidLoopBack)
             }
-            v if v == DecompressionReturnValues::InvalidWrapper as _ => {
+            v if v == DecompressionReturnValues::InvalidWrapper as i32 => {
                 Ok(DecompressionReturnValues::InvalidWrapper)
             }
-            v if v == DecompressionReturnValues::UnsupportedMethod as _ => {
+            v if v == DecompressionReturnValues::UnsupportedMethod as i32 => {
                 Ok(DecompressionReturnValues::UnsupportedMethod)
             }
-            v if v == DecompressionReturnValues::IncorrectChecksum as _ => {
+            v if v == DecompressionReturnValues::IncorrectChecksum as i32 => {
                 Ok(DecompressionReturnValues::IncorrectChecksum)
             }
             _ => Err(Error::Other((
-                Some(value),
+                Some(value as isize),
                 "Unknown exit code from decompression".to_string(),
             ))),
         }
@@ -147,7 +146,27 @@ pub enum CompressionLevel {
     Three = 3,
 }
 
+impl TryFrom<isize> for CompressionLevel {
+    type Error = crate::error::Error;
+    fn try_from(value: isize) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Zero),
+            1 => Ok(Self::One),
+            3 => Ok(Self::Three),
+            _ => Err(Self::Error::Other((
+                None,
+                format!(
+                    "Compression level {} not supported, must be one of [0, 1, 3]",
+                    value
+                ),
+            ))),
+        }
+    }
+}
+
 pub mod read {
+
+    use mem::MaybeUninit;
 
     use super::*;
 
@@ -162,7 +181,7 @@ pub mod read {
     /// -------
     /// ```
     /// use std::{io, io::Read};
-    /// use isal_rs::igzip::{read::Encoder, CompressionLevel, decompress};
+    /// use isal::igzip::{read::Encoder, CompressionLevel, decompress};
     /// let data = b"Hello, World!".to_vec();
     ///
     /// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
@@ -172,19 +191,16 @@ pub mod read {
     /// let n = io::copy(&mut encoder, &mut compressed).unwrap();
     /// assert_eq!(n as usize, compressed.len());
     ///
-    /// let decompressed = decompress(&compressed).unwrap();
+    /// let decompressed = decompress(io::Cursor::new(compressed)).unwrap();
     /// assert_eq!(decompressed.as_slice(), data);
     /// ```
     pub struct Encoder<R: io::Read> {
         inner: R,
-        stream: isal::isal_zstream,
+        stream: ZStream,
         in_buf: [u8; BUF_SIZE],
         out_buf: Vec<u8>,
         dsts: usize,
         dste: usize,
-
-        #[allow(dead_code)] // held for releasing memory, buffer is only used by zstream
-        level_buf: Vec<u8>,
     }
 
     impl<R: io::Read> Encoder<R> {
@@ -193,22 +209,15 @@ pub mod read {
             let in_buf = [0_u8; BUF_SIZE];
             let out_buf = Vec::with_capacity(BUF_SIZE);
 
-            let mut zstream = new_zstream(isal::isal_deflate_init);
+            let mut zstream = ZStream::new_stateful(level);
 
-            zstream.end_of_stream = 0;
-            zstream.flush = FlushFlags::SyncFlush as _;
-            zstream.level = level as _;
-            zstream.gzip_flag = is_gzip as _;
-
-            // TODO: set level buf sizes
-            let mut level_buf = vec![0_u8; isal::ISAL_DEF_LVL3_DEFAULT as _];
-            zstream.level_buf = level_buf.as_mut_ptr();
-            zstream.level_buf_size = level_buf.len() as _;
+            zstream.stream.end_of_stream = 0;
+            zstream.stream.flush = FlushFlags::SyncFlush as _;
+            zstream.stream.gzip_flag = is_gzip as _;
 
             Self {
                 inner: reader,
                 stream: zstream,
-                level_buf,
                 in_buf,
                 out_buf,
                 dste: 0,
@@ -246,27 +255,29 @@ pub mod read {
             let count = self.read_from_out_buf(buf);
             if count > 0 {
                 Ok(count)
-            } else if self.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
+            } else if self.stream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END
+            {
                 // Read out next buf len worth to compress; filling intermediate out_buf
-                self.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
-                if self.stream.avail_in < self.in_buf.len() as _ {
-                    self.stream.end_of_stream = 1;
+                self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                if self.stream.stream.avail_in < self.in_buf.len() as _ {
+                    self.stream.stream.end_of_stream = 1;
                 }
-                self.stream.next_in = self.in_buf.as_mut_ptr();
+                self.stream.stream.next_in = self.in_buf.as_mut_ptr();
 
                 let mut n_bytes = 0;
                 self.out_buf.truncate(0);
 
                 // compress this chunk into out_buf
-                while self.stream.avail_in > 0 {
+                while self.stream.stream.avail_in > 0 {
                     self.out_buf.resize(self.out_buf.len() + BUF_SIZE, 0);
 
-                    self.stream.avail_out = BUF_SIZE as _;
-                    self.stream.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+                    self.stream.stream.avail_out = BUF_SIZE as _;
+                    self.stream.stream.next_out =
+                        self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
 
-                    isal_deflate_core(&mut self.stream, isal::isal_deflate)?;
+                    self.stream.deflate_stateful()?;
 
-                    n_bytes += BUF_SIZE - self.stream.avail_out as usize;
+                    n_bytes += BUF_SIZE - self.stream.stream.avail_out as usize;
                 }
                 self.out_buf.truncate(n_bytes);
                 self.dste = n_bytes;
@@ -290,7 +301,7 @@ pub mod read {
     /// -------
     /// ```
     /// use std::{io, io::Read};
-    /// use isal_rs::igzip::{read::Decoder, CompressionLevel, compress};
+    /// use isal::igzip::{read::Decoder, CompressionLevel, compress};
     /// let data = b"Hello, World!".to_vec();
     ///
     /// let compressed = compress(data.as_slice(), CompressionLevel::Three, true).unwrap();
@@ -304,7 +315,7 @@ pub mod read {
     /// ```
     pub struct Decoder<R: io::Read> {
         inner: R,
-        zst: isal::inflate_state,
+        zst: InflateState,
         in_buf: [u8; BUF_SIZE],
         out_buf: Vec<u8>,
         dsts: usize,
@@ -313,13 +324,13 @@ pub mod read {
 
     impl<R: io::Read> Decoder<R> {
         pub fn new(reader: R) -> Decoder<R> {
-            let mut zst = new_inflate_state(isal::isal_inflate_init);
-            zst.crc_flag = 1;
+            let mut zst = InflateState::new();
+            zst.0.crc_flag = isal::IGZIP_GZIP;
 
             Self {
                 inner: reader,
                 zst,
-                in_buf: [0_u8; BUF_SIZE],
+                in_buf: [0u8; BUF_SIZE],
                 out_buf: Vec::with_capacity(BUF_SIZE),
                 dste: 0,
                 dsts: 0,
@@ -358,32 +369,42 @@ pub mod read {
                 Ok(count)
             } else {
                 // Read out next buf len worth to compress; filling intermediate out_buf
-                self.zst.avail_in = self.inner.read(&mut self.in_buf)? as _;
-                self.zst.next_in = self.in_buf.as_mut_ptr();
-
-                let mut gz_hdr = isal::isal_gzip_header::default();
-                unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
+                self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                self.zst.0.next_in = self.in_buf.as_mut_ptr();
 
                 let mut n_bytes = 0;
-                while self.zst.avail_in != 0 {
-                    // Ensure reset for next member (if exists; not on first iteration)
-                    if n_bytes > 0 {
-                        unsafe { isal::isal_inflate_reset(&mut self.zst as *mut _) };
+                while self.zst.0.avail_in != 0 {
+                    if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                        // Read this member's gzip header
+                        let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
+                        unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+                        let mut gz_hdr = unsafe { gz_hdr.assume_init() };
+                        read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
                     }
 
-                    // Read this member's gzip header
-                    read_gzip_header(&mut self.zst, &mut gz_hdr)?;
-
                     // decompress member
-                    while self.zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
-                        self.out_buf.resize(self.out_buf.len() + BUF_SIZE, 0);
+                    loop {
+                        self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
-                        self.zst.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-                        self.zst.avail_out = BUF_SIZE as _;
+                        self.zst.0.next_out =
+                            self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+                        self.zst.0.avail_out = BUF_SIZE as _;
 
-                        isal_inflate_core(&mut self.zst, isal::isal_inflate)?;
+                        self.zst.step_inflate()?;
 
-                        n_bytes += BUF_SIZE - self.zst.avail_out as usize;
+                        n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
+
+                        let state = self.zst.block_state();
+                        if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                            || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
+                            || state == isal::isal_block_state_ISAL_BLOCK_HDR
+                            || state == isal::isal_block_state_ISAL_BLOCK_FINISH
+                        {
+                            break;
+                        }
+                    }
+                    if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                        self.zst.reset();
                     }
                 }
                 self.out_buf.truncate(n_bytes);
@@ -400,6 +421,29 @@ pub mod read {
 
         use super::*;
         use std::io::{self, Cursor};
+
+        fn gen_large_data() -> Vec<u8> {
+            (0..1_000_000)
+                .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
+                .flat_map(|v| v)
+                .collect()
+        }
+
+        #[test]
+        fn large_roundtrip() {
+            let input = gen_large_data();
+            let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+            let mut output = vec![];
+
+            let n = io::copy(&mut encoder, &mut output).unwrap();
+            assert!(n < input.len() as u64);
+
+            let mut decoder = Decoder::new(Cursor::new(output));
+            let mut decompressed = vec![];
+            let nbytes = io::copy(&mut decoder, &mut decompressed).unwrap();
+
+            assert_eq!(nbytes as usize, input.len());
+        }
 
         #[test]
         fn basic_compress() -> Result<()> {
@@ -438,7 +482,7 @@ pub mod read {
         #[test]
         fn basic_decompress() -> Result<()> {
             let input = b"hello, world!";
-            let compressed = compress(input, CompressionLevel::Three, true)?;
+            let compressed = compress(Cursor::new(input), CompressionLevel::Three, true)?;
 
             let mut decoder = Decoder::new(compressed.as_slice());
             let mut decompressed = vec![];
@@ -474,14 +518,69 @@ pub mod read {
     }
 }
 
-/// Create a new zstream, calling the `init` operation from underlying isal lib.
-#[inline(always)]
-pub(crate) fn new_zstream(
-    init: unsafe extern "C" fn(*mut isal::isal_zstream),
-) -> isal::isal_zstream {
-    let mut zstream_uninit: mem::MaybeUninit<isal::isal_zstream> = mem::MaybeUninit::uninit();
-    unsafe { init(zstream_uninit.as_mut_ptr()) };
-    unsafe { zstream_uninit.assume_init() }
+pub struct ZStream {
+    stream: isal::isal_zstream,
+    #[allow(dead_code)] // Pointer used by stream, kept here to release when dropped
+    level_buf: Vec<u8>,
+}
+
+impl ZStream {
+    pub fn new_stateful(level: CompressionLevel) -> Self {
+        let mut zstream_uninit: mem::MaybeUninit<isal::isal_zstream> = mem::MaybeUninit::uninit();
+        unsafe { isal::isal_deflate_init(zstream_uninit.as_mut_ptr()) };
+        let mut zstream = unsafe { zstream_uninit.assume_init() };
+        let buf_size = match level {
+            CompressionLevel::Zero => isal::ISAL_DEF_LVL0_DEFAULT,
+            CompressionLevel::One => isal::ISAL_DEF_LVL1_DEFAULT,
+            CompressionLevel::Three => isal::ISAL_DEF_LVL3_DEFAULT,
+        };
+        let mut buf = vec![0u8; buf_size as usize];
+
+        zstream.level = level as _;
+        zstream.level_buf = buf.as_mut_ptr();
+        zstream.level_buf_size = buf.len() as _;
+
+        Self {
+            stream: zstream,
+            level_buf: buf,
+        }
+    }
+    pub fn new_stateless(level: CompressionLevel) -> Self {
+        let mut zstream_uninit: mem::MaybeUninit<isal::isal_zstream> = mem::MaybeUninit::uninit();
+        unsafe { isal::isal_deflate_stateless_init(zstream_uninit.as_mut_ptr()) };
+        let mut zstream = unsafe { zstream_uninit.assume_init() };
+        let buf_size = match level {
+            CompressionLevel::Zero => isal::ISAL_DEF_LVL0_DEFAULT,
+            CompressionLevel::One => isal::ISAL_DEF_LVL1_DEFAULT,
+            CompressionLevel::Three => isal::ISAL_DEF_LVL3_DEFAULT,
+        };
+        let mut buf = vec![0u8; buf_size as usize];
+
+        zstream.level = level as _;
+        zstream.level_buf = buf.as_mut_ptr();
+        zstream.level_buf_size = buf.len() as _;
+
+        Self {
+            stream: zstream,
+            level_buf: buf,
+        }
+    }
+
+    pub fn deflate_stateful(&mut self) -> Result<()> {
+        let ret = unsafe { isal::isal_deflate(&mut self.stream) };
+        match CompressionReturnValues::try_from(ret)? {
+            CompressionReturnValues::CompOk => Ok(()),
+            r => Err(Error::CompressionError(r)),
+        }
+    }
+
+    pub fn deflate_stateless(&mut self) -> Result<()> {
+        let ret = unsafe { isal::isal_deflate_stateless(&mut self.stream) };
+        match CompressionReturnValues::try_from(ret)? {
+            CompressionReturnValues::CompOk => Ok(()),
+            r => Err(Error::CompressionError(r)),
+        }
+    }
 }
 
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
@@ -492,114 +591,70 @@ pub fn compress_into(
     level: CompressionLevel,
     is_gzip: bool,
 ) -> Result<usize> {
-    let mut zstream = new_zstream(isal::isal_deflate_stateless_init);
+    let mut zstream = ZStream::new_stateless(level);
 
-    zstream.flush = FlushFlags::NoFlush as _;
-    zstream.level = level as _;
-    zstream.gzip_flag = is_gzip as _;
-    zstream.end_of_stream = 1;
-
-    let level_buf_size = isal::ISAL_DEF_LVL3_LARGE; //mem_level_to_bufsize(level, mem_level);
-    let mut level_buf = vec![0_u8; level_buf_size as _];
-    zstream.level_buf = level_buf.as_mut_ptr();
-    zstream.level_buf_size = level_buf.len() as _;
+    zstream.stream.flush = FlushFlags::NoFlush as _;
+    zstream.stream.gzip_flag = is_gzip as _;
+    zstream.stream.end_of_stream = 1;
 
     // read input into buffer
-    zstream.avail_in = input.len() as _;
-    zstream.next_in = input.as_ptr() as *mut _;
+    zstream.stream.avail_in = input.len() as _;
+    zstream.stream.next_in = input.as_ptr() as *mut _;
 
     // compress this block in its entirety
-    zstream.avail_out = output.len() as _;
-    zstream.next_out = output.as_mut_ptr();
+    zstream.stream.avail_out = output.len() as _;
+    zstream.stream.next_out = output.as_mut_ptr();
 
-    isal_deflate_core(&mut zstream, isal::isal_deflate_stateless)?;
-    Ok(zstream.total_out as _)
+    zstream.deflate_stateless()?;
+    Ok(zstream.stream.total_out as _)
 }
 
 /// Compress `input`
 #[inline(always)]
-pub fn compress(input: &[u8], level: CompressionLevel, is_gzip: bool) -> Result<Vec<u8>> {
-    let mut zstream = new_zstream(isal::isal_deflate_init);
+pub fn compress<R: std::io::Read>(
+    input: R,
+    level: CompressionLevel,
+    is_gzip: bool,
+) -> Result<Vec<u8>> {
+    let mut out = vec![];
+    let mut encoder = read::Encoder::new(input, level, is_gzip);
+    io::copy(&mut encoder, &mut out)?;
+    Ok(out)
+}
 
-    zstream.end_of_stream = 1;
-    zstream.flush = FlushFlags::NoFlush as _;
+pub struct InflateState(isal::inflate_state);
 
-    zstream.level = level as _;
-    zstream.gzip_flag = is_gzip as _;
-
-    let level_buf_size = isal::ISAL_DEF_LVL3_DEFAULT; // TODO: set level buf sizes
-    let mut level_buf = vec![0_u8; level_buf_size as _];
-    zstream.level_buf = level_buf.as_mut_ptr();
-    zstream.level_buf_size = level_buf.len() as _;
-
-    // TODO: impl level one condition: https://github.com/intel/isa-l/blob/62519d97ec8242dce393a1f81593f4f67da3ac92/igzip/igzip_example.c#L70
-    // read input into buffer
-    zstream.avail_in = input.len() as _;
-    zstream.next_in = input.as_ptr() as *mut _;
-
-    // compress input
-    let mut buf = Vec::with_capacity(BUF_SIZE);
-    let mut n_bytes = 0;
-    while zstream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
-        buf.resize(buf.len() + BUF_SIZE, 0);
-
-        zstream.avail_out = BUF_SIZE as _;
-        zstream.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-
-        isal_deflate_core(&mut zstream, isal::isal_deflate)?;
-
-        n_bytes += BUF_SIZE - zstream.avail_out as usize;
+impl InflateState {
+    pub fn new() -> Self {
+        let mut uninit: mem::MaybeUninit<isal::inflate_state> = mem::MaybeUninit::uninit();
+        unsafe { isal::isal_inflate_init(uninit.as_mut_ptr()) };
+        let state = unsafe { uninit.assume_init() };
+        Self(state)
     }
-    buf.truncate(n_bytes);
-    Ok(buf)
-}
 
-#[inline(always)]
-pub(crate) fn new_inflate_state(
-    init: unsafe extern "C" fn(*mut isal::inflate_state),
-) -> isal::inflate_state {
-    let mut uninit: mem::MaybeUninit<isal::inflate_state> = mem::MaybeUninit::uninit();
-    unsafe { init(uninit.as_mut_ptr()) };
-    unsafe { uninit.assume_init() }
-}
+    pub fn block_state(&self) -> u32 {
+        self.0.block_state
+    }
 
-#[inline(always)]
-pub fn decompress(input: &[u8]) -> Result<Vec<u8>> {
-    let mut zst = new_inflate_state(isal::isal_inflate_init);
-    zst.avail_in = input.len() as _;
-    zst.next_in = input.as_ptr() as *mut _;
-    zst.crc_flag = 1;
+    pub fn reset(&mut self) {
+        unsafe { isal::isal_inflate_reset(&mut self.0) }
+    }
 
-    let mut gz_hdr = isal::isal_gzip_header::default();
-    unsafe { isal::isal_gzip_header_init(&mut gz_hdr as *mut _) };
-
-    let mut buf = Vec::with_capacity(BUF_SIZE);
-    let mut n_bytes = 0;
-
-    while zst.avail_in != 0 {
-        // Ensure reset for next member (if exists; not on first iteration)
-        if n_bytes > 0 {
-            unsafe { isal::isal_inflate_reset(&mut zst as *mut _) };
-        }
-
-        // Read this member's gzip header
-        read_gzip_header(&mut zst, &mut gz_hdr)?;
-
-        // decompress member
-        while zst.block_state != isal::isal_block_state_ISAL_BLOCK_FINISH {
-            buf.resize(buf.len() + BUF_SIZE, 0);
-            zst.next_out = buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-            zst.avail_out = BUF_SIZE as _;
-
-            isal_inflate_core(&mut zst, isal::isal_inflate)?;
-
-            n_bytes += BUF_SIZE - zst.avail_out as usize;
+    pub fn step_inflate(&mut self) -> Result<()> {
+        let ret = unsafe { isal::isal_inflate(&mut self.0) };
+        match DecompressionReturnValues::try_from(ret)? {
+            DecompressionReturnValues::DecompOk => Ok(()),
+            r => Err(Error::DecompressionError(r)),
         }
     }
 
-    buf.truncate(n_bytes);
-
-    Ok(buf)
+    pub fn inflate_stateless(&mut self) -> Result<()> {
+        let ret = unsafe { isal::isal_inflate_stateless(&mut self.0) };
+        match DecompressionReturnValues::try_from(ret)? {
+            DecompressionReturnValues::DecompOk => Ok(()),
+            r => Err(Error::DecompressionError(r)),
+        }
+    }
 }
 
 /// Read and return gzip header information
@@ -615,61 +670,52 @@ pub fn read_gzip_header(
     zst: &mut isal::inflate_state,
     gz_hdr: &mut isal::isal_gzip_header,
 ) -> Result<()> {
-    let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) } as isize;
+    let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) };
     match DecompressionReturnValues::try_from(ret)? {
         DecompressionReturnValues::DecompOk => Ok(()),
         r => Err(Error::DecompressionError(r)),
     }
+}
+
+#[inline(always)]
+pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
+    let mut out = vec![];
+    let mut decoder = read::Decoder::new(input);
+    io::copy(&mut decoder, &mut out)?;
+    Ok(out)
 }
 
 #[inline(always)]
 pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize> {
-    let mut zst = new_inflate_state(isal::isal_inflate_init);
-    zst.avail_in = input.len() as _;
-    zst.next_in = input.as_ptr() as *mut _;
-    zst.crc_flag = 1;
+    let mut zst = InflateState::new();
+    zst.0.avail_in = input.len() as _;
+    zst.0.next_in = input.as_ptr() as *mut _;
+    zst.0.crc_flag = 1;
 
-    zst.avail_out = output.len() as _;
-    zst.next_out = output.as_mut_ptr();
+    zst.0.avail_out = output.len() as _;
+    zst.0.next_out = output.as_mut_ptr();
 
-    isal_inflate_core(&mut zst, isal::isal_inflate_stateless)?;
+    zst.inflate_stateless()?;
 
-    Ok(zst.total_out as _)
-}
-
-/// Combine error handling for both isal_deflate/_stateless functions
-#[inline(always)]
-fn isal_inflate_core(
-    zst: &mut isal::inflate_state,
-    op: unsafe extern "C" fn(*mut isal::inflate_state) -> c_int,
-) -> Result<()> {
-    let ret = unsafe { op(zst as *mut _) } as isize;
-    match DecompressionReturnValues::try_from(ret)? {
-        DecompressionReturnValues::DecompOk => Ok(()),
-        r => Err(Error::DecompressionError(r)),
-    }
-}
-
-/// Combine error handling for both isal_deflate/_stateless functions
-#[inline(always)]
-fn isal_deflate_core(
-    zstream: &mut isal::isal_zstream,
-    op: unsafe extern "C" fn(*mut isal::isal_zstream) -> c_int,
-) -> Result<()> {
-    let ret = unsafe { op(zstream as *mut _) } as isize;
-    match CompressionReturnValues::try_from(ret)? {
-        CompressionReturnValues::CompOk => Ok(()),
-        r => Err(Error::CompressionError(r)),
-    }
+    Ok(zst.0.total_out as _)
 }
 
 #[cfg(test)]
 mod tests {
 
+    use io::Cursor;
     use md5;
     use std::fs;
 
     use super::*;
+
+    // Default testing data
+    fn gen_large_data() -> Vec<u8> {
+        (0..1_000_000)
+            .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
+            .flat_map(|v| v)
+            .collect()
+    }
 
     fn same_same(a: &[u8], b: &[u8]) -> bool {
         md5::compute(a) == md5::compute(b)
@@ -698,7 +744,7 @@ mod tests {
     #[test]
     fn basic_compress() -> Result<()> {
         let data = get_data()?;
-        let output = compress(&data, CompressionLevel::Three, true)?;
+        let output = compress(Cursor::new(data), CompressionLevel::Three, true)?;
         println!(
             "n_bytes: {:?}",
             &output[..std::cmp::min(output.len() - 1, 100)]
@@ -713,7 +759,7 @@ mod tests {
             31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
             73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
         ];
-        let decompressed = decompress(&compressed)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, b"hello, world!");
         Ok(())
     }
@@ -736,8 +782,8 @@ mod tests {
     fn larger_decompress() -> Result<()> {
         /* Decompress data which is larger than BUF_SIZE */
         let data = get_data()?;
-        let compressed = compress(&data, CompressionLevel::Three, true)?;
-        let decompressed = decompress(&compressed)?;
+        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, true)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert!(same_same(&data, &decompressed));
         Ok(())
     }
@@ -751,7 +797,7 @@ mod tests {
         ];
         compressed.extend(compressed.clone());
 
-        let decompressed = decompress(&compressed)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
     }
@@ -759,8 +805,8 @@ mod tests {
     #[test]
     fn basic_round_trip() -> Result<()> {
         let data = b"hello, world!";
-        let compressed = compress(data, CompressionLevel::Three, true)?;
-        let decompressed = decompress(&compressed)?;
+        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, true)?;
+        let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, data);
         Ok(())
     }
@@ -769,7 +815,7 @@ mod tests {
     fn basic_round_trip_into() -> Result<()> {
         let data = b"hello, world!".to_vec();
 
-        let compressed_len = compress(&data, CompressionLevel::Three, true)?.len();
+        let compressed_len = compress(Cursor::new(&data), CompressionLevel::Three, true)?.len();
         let decompressed_len = data.len();
 
         let mut compressed = vec![0; compressed_len];
@@ -778,6 +824,29 @@ mod tests {
         // compress_into
         let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
         assert_eq!(n_bytes, compressed_len);
+
+        // decompress_into
+        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        assert_eq!(n_bytes, decompressed_len);
+
+        // round trip output matches original input
+        assert!(same_same(&data, &decompressed));
+        Ok(())
+    }
+
+    #[test]
+    fn large_round_trip_into() -> Result<()> {
+        let data = gen_large_data();
+
+        let compressed_len = compress(Cursor::new(&data), CompressionLevel::Three, true)?.len();
+        let decompressed_len = data.len();
+
+        let mut compressed = vec![0; compressed_len];
+        let mut decompressed = vec![0; decompressed_len];
+
+        // compress_into
+        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
+        assert!(n_bytes < data.len());
 
         // decompress_into
         let n_bytes = decompress_into(&compressed, &mut decompressed)?;
