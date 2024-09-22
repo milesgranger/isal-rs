@@ -1,6 +1,6 @@
 [package]
 name = "isal-rs"
-version = "0.1.0+62519d9"
+version = "0.2.0+496255c"
 edition = "2021"
 
 [lib]
