@@ -4,7 +4,7 @@ use std::io;
 use std::io::Cursor;
 
 fn get_data() -> Vec<u8> {
-    (0..10_000)
+    (0..500_000)
         .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
         .flat_map(|v| v)
         .collect()
@@ -101,7 +101,7 @@ fn igzip_encoder(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(250);
+    config = Criterion::default().sample_size(50);
     targets =
         igzip_compress,
         igzip_compress_into,
