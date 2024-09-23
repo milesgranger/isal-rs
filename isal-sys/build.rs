@@ -99,7 +99,7 @@ fn main() {
     }
 
     let libname = if cfg!(target_os = "windows") {
-        println!("cargo:rustc-link-search=native={}", install_path.display());
+        println!("cargo:rustc-link-search=native={}", src_dir.display());
         "isa-l"
     } else {
         for subdir in ["bin", "lib", "lib64"] {
