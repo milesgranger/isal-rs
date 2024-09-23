@@ -24,7 +24,7 @@ fn main() {
         .unwrap_or(out_dir.clone());
 
     let current_dir = std::env::current_dir().unwrap();
-    std::env::set_current_dir(&install_path).unwrap();
+    std::env::set_current_dir(&src_dir).unwrap();
 
     // build from source
     #[cfg(not(feature = "use-system-isal"))]
