@@ -1,3 +1,4 @@
+//! IGZIP interface
 pub mod read;
 pub mod write;
 
@@ -49,6 +50,7 @@ pub fn compress<R: std::io::Read>(
     Ok(out)
 }
 
+/// Decompress
 #[inline(always)]
 pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
     let mut out = vec![];
@@ -57,6 +59,7 @@ pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Decompress `input` into `output`, returning number of bytes written to output.
 #[inline(always)]
 pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize> {
     let mut zst = InflateState::new();

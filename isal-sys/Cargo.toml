@@ -1,6 +1,6 @@
 [package]
 name = "isal-sys"
-version = "0.3.0+496255c"
+version = "0.3.1+496255c"
 edition = "2021"
 description = "isa-l sys crate"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 default = ["static"]
 static = []
 shared = []
-
+use-system-isal = []
 regenerate-bindings = ["dep:bindgen"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
