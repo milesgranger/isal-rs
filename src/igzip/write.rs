@@ -1,8 +1,9 @@
+//! Encoder and Decoder implementing `std::io::Write`
 use crate::igzip::*;
 use std::io;
 use std::io::Write;
 
-/// Streaming compression for input streams implementing `std::io::Read`.
+/// Streaming compression for input streams implementing `std::io::Write`.
 ///
 /// Notes
 /// -----
@@ -155,7 +156,7 @@ impl<W: io::Write> io::Write for Encoder<W> {
     }
 }
 
-/// Streaming compression for input streams implementing `std::io::Read`.
+/// Streaming compression for input streams implementing `std::io::Write`.
 ///
 /// Notes
 /// -----

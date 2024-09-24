@@ -1,3 +1,4 @@
+//! Encoder and Decoder implementing `std::io::Read`
 use crate::igzip::*;
 use mem::MaybeUninit;
 use std::io;
