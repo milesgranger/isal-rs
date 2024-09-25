@@ -3,6 +3,46 @@ use crate::igzip::*;
 use mem::MaybeUninit;
 use std::io;
 
+/// Deflate decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct DeflateEncoder<R: io::Read> {
+    inner: Encoder<R>,
+}
+
+impl<R: io::Read> DeflateEncoder<R> {
+    pub fn new(reader: R, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(reader, level, Codec::Deflate),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for DeflateEncoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Deflate decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct DeflateDecoder<R: io::Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: io::Read> DeflateDecoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            inner: Decoder::new(reader, Codec::Deflate),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for DeflateDecoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
 /// Streaming compression for input streams implementing `std::io::Read`.
 ///
 /// Notes
@@ -14,10 +54,10 @@ use std::io;
 /// -------
 /// ```
 /// use std::{io, io::Read};
-/// use isal::igzip::{read::Encoder, CompressionLevel, decompress};
+/// use isal::igzip::{read::Encoder, CompressionLevel, decompress, Codec};
 /// let data = b"Hello, World!".to_vec();
 ///
-/// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+/// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, Codec::Gzip);
 /// let mut compressed = vec![];
 ///
 /// // Numbeer of compressed bytes written to `output`
@@ -38,7 +78,7 @@ pub struct Encoder<R: io::Read> {
 
 impl<R: io::Read> Encoder<R> {
     /// Create a new `Encoder` which implements the `std::io::Read` trait.
-    pub fn new(reader: R, level: CompressionLevel, is_gzip: bool) -> Encoder<R> {
+    pub fn new(reader: R, level: CompressionLevel, codec: Codec) -> Encoder<R> {
         let in_buf = [0_u8; BUF_SIZE];
         let out_buf = Vec::with_capacity(BUF_SIZE);
 
@@ -46,7 +86,7 @@ impl<R: io::Read> Encoder<R> {
 
         zstream.stream.end_of_stream = 0;
         zstream.stream.flush = FlushFlags::SyncFlush as _;
-        zstream.stream.gzip_flag = is_gzip as _;
+        zstream.stream.gzip_flag = codec as _;
 
         Self {
             inner: reader,
@@ -133,11 +173,11 @@ impl<R: io::Read> io::Read for Encoder<R> {
 /// -------
 /// ```
 /// use std::{io, io::Read};
-/// use isal::igzip::{read::Decoder, CompressionLevel, compress};
+/// use isal::igzip::{read::Decoder, CompressionLevel, compress, Codec};
 /// let data = b"Hello, World!".to_vec();
 ///
-/// let compressed = compress(data.as_slice(), CompressionLevel::Three, true).unwrap();
-/// let mut decoder = Decoder::new(compressed.as_slice());
+/// let compressed = compress(data.as_slice(), CompressionLevel::Three, Codec::Gzip).unwrap();
+/// let mut decoder = Decoder::new(compressed.as_slice(), Codec::Gzip);
 /// let mut decompressed = vec![];
 ///
 /// // Numbeer of compressed bytes written to `output`
@@ -152,12 +192,13 @@ pub struct Decoder<R: io::Read> {
     out_buf: Vec<u8>,
     dsts: usize,
     dste: usize,
+    codec: Codec,
 }
 
 impl<R: io::Read> Decoder<R> {
-    pub fn new(reader: R) -> Decoder<R> {
+    pub fn new(reader: R, codec: Codec) -> Decoder<R> {
         let mut zst = InflateState::new();
-        zst.0.crc_flag = isal::IGZIP_GZIP;
+        zst.0.crc_flag = codec as _;
 
         Self {
             inner: reader,
@@ -166,6 +207,7 @@ impl<R: io::Read> Decoder<R> {
             out_buf: Vec::with_capacity(BUF_SIZE),
             dste: 0,
             dsts: 0,
+            codec,
         }
     }
 
@@ -201,12 +243,15 @@ impl<R: io::Read> io::Read for Decoder<R> {
             Ok(count)
         } else {
             // Read out next buf len worth to compress; filling intermediate out_buf
+            debug_assert_eq!(self.zst.0.avail_in, 0);
             self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
             self.zst.0.next_in = self.in_buf.as_mut_ptr();
 
             let mut n_bytes = 0;
             while self.zst.0.avail_in != 0 {
-                if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                if self.codec == Codec::Gzip
+                    && self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR
+                {
                     // Read this member's gzip header
                     let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
                     unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
@@ -214,6 +259,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
                 }
 
+                // TODO: I'm pretty sure we can remove out_buf
                 // decompress member
                 loop {
                     self.out_buf.resize(n_bytes + BUF_SIZE, 0);
@@ -226,12 +272,28 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
 
                     let state = self.zst.block_state();
-                    if state == isal::isal_block_state_ISAL_BLOCK_CODED
-                        || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
-                        || state == isal::isal_block_state_ISAL_BLOCK_HDR
-                        || state == isal::isal_block_state_ISAL_BLOCK_FINISH
-                    {
-                        break;
+                    match self.codec {
+                        Codec::Deflate => {
+                            if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                                break;
+
+                            // refill avail in, still actively decoding but reached end of input
+                            } else if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                                && self.zst.0.avail_in == 0
+                            {
+                                self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                                self.zst.0.next_in = self.in_buf.as_mut_ptr();
+                            }
+                        }
+                        Codec::Gzip => {
+                            if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                                || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
+                                || state == isal::isal_block_state_ISAL_BLOCK_HDR
+                                || state == isal::isal_block_state_ISAL_BLOCK_FINISH
+                            {
+                                break;
+                            }
+                        }
                     }
                 }
                 if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
@@ -255,15 +317,21 @@ mod tests {
     use std::io::{self, Cursor};
 
     #[test]
-    fn large_roundtrip() {
-        let input = gen_large_data();
-        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+    fn roundtrip_small() {
+        roundtrip(b"foobar")
+    }
+    #[test]
+    fn roundtrip_large() {
+        roundtrip(&gen_large_data())
+    }
+    fn roundtrip(input: &[u8]) {
+        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output).unwrap();
-        assert!(n < input.len() as u64);
+        assert_eq!(n as usize, output.len());
 
-        let mut decoder = Decoder::new(Cursor::new(output));
+        let mut decoder = Decoder::new(Cursor::new(output), Codec::Gzip);
         let mut decompressed = vec![];
         let nbytes = io::copy(&mut decoder, &mut decompressed).unwrap();
 
@@ -272,9 +340,15 @@ mod tests {
     }
 
     #[test]
-    fn basic_compress() -> Result<()> {
-        let input = b"hello, world!";
-        let mut encoder = Encoder::new(Cursor::new(input), CompressionLevel::Three, true);
+    fn basic_compress_small() -> Result<()> {
+        basic_compress(b"foobar")
+    }
+    #[test]
+    fn basic_compress_large() -> Result<()> {
+        basic_compress(&gen_large_data())
+    }
+    fn basic_compress(input: &[u8]) -> Result<()> {
+        let mut encoder = Encoder::new(Cursor::new(input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output)? as usize;
@@ -295,7 +369,7 @@ mod tests {
             }
         }
 
-        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output)? as usize;
@@ -306,11 +380,17 @@ mod tests {
     }
 
     #[test]
-    fn basic_decompress() -> Result<()> {
-        let input = b"hello, world!";
-        let compressed = compress(Cursor::new(input), CompressionLevel::Three, true)?;
+    fn basic_decompress_small() -> Result<()> {
+        basic_decompress(b"foobar")
+    }
+    #[test]
+    fn basic_decompress_large() -> Result<()> {
+        basic_decompress(&gen_large_data())
+    }
+    fn basic_decompress(input: &[u8]) -> Result<()> {
+        let compressed = compress(Cursor::new(input), CompressionLevel::Three, Codec::Gzip)?;
 
-        let mut decoder = Decoder::new(compressed.as_slice());
+        let mut decoder = Decoder::new(compressed.as_slice(), Codec::Gzip);
         let mut decompressed = vec![];
 
         let n = io::copy(&mut decoder, &mut decompressed)? as usize;
@@ -330,9 +410,9 @@ mod tests {
             }
         }
 
-        let compressed = compress(input.as_slice(), CompressionLevel::Three, true)?;
+        let compressed = compress(input.as_slice(), CompressionLevel::Three, Codec::Gzip)?;
 
-        let mut decoder = Decoder::new(compressed.as_slice());
+        let mut decoder = Decoder::new(compressed.as_slice(), Codec::Gzip);
         let mut decompressed = vec![];
 
         let n = io::copy(&mut decoder, &mut decompressed)? as usize;
@@ -343,11 +423,16 @@ mod tests {
     }
 
     #[test]
-    fn flate2_gzip_compat_encoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_gzip_compat_encoder_out_small() {
+        flate2_gzip_compat_encoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_gzip_compat_encoder_out_large() {
+        flate2_gzip_compat_encoder_out(&gen_large_data())
+    }
+    fn flate2_gzip_compat_encoder_out(data: &[u8]) {
         // our encoder
-        let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(data, CompressionLevel::Three, Codec::Gzip);
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 
@@ -360,20 +445,69 @@ mod tests {
     }
 
     #[test]
-    fn flate2_gzip_compat_decoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_gzip_compat_decoder_out_small() {
+        flate2_gzip_compat_decoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_gzip_compat_decoder_out_large() {
+        flate2_gzip_compat_decoder_out(&gen_large_data())
+    }
+    fn flate2_gzip_compat_decoder_out(data: &[u8]) {
         // their encoder
-        let mut encoder =
-            flate2::read::GzEncoder::new(data.as_slice(), flate2::Compression::fast());
+        let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::fast());
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 
         // our decoder
-        let mut decoder = Decoder::new(compressed.as_slice());
+        let mut decoder = Decoder::new(compressed.as_slice(), Codec::Gzip);
         let mut decompressed = vec![];
         io::copy(&mut decoder, &mut decompressed).unwrap();
 
+        assert!(same_same(&data, &decompressed));
+    }
+
+    #[test]
+    fn flate2_deflate_compat_encoder_out_small() {
+        flate2_deflate_compat_encoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_deflate_compat_encoder_out_large() {
+        flate2_deflate_compat_encoder_out(&gen_large_data())
+    }
+    fn flate2_deflate_compat_encoder_out(data: &[u8]) {
+        // our encoder
+        let mut encoder = DeflateEncoder::new(data, CompressionLevel::Three);
+        let mut compressed = vec![];
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        // their decoder
+        let mut decoder = flate2::read::DeflateDecoder::new(compressed.as_slice());
+        let mut decompressed = vec![];
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert!(same_same(&data, &decompressed));
+    }
+
+    #[test]
+    fn flate2_deflate_compat_decoder_out_small() {
+        flate2_deflate_compat_decoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_deflate_compat_decoder_out_large() {
+        flate2_deflate_compat_decoder_out(&gen_large_data())
+    }
+    fn flate2_deflate_compat_decoder_out(data: &[u8]) {
+        // their encoder
+        let mut encoder = flate2::read::DeflateEncoder::new(data, flate2::Compression::fast());
+        let mut compressed = vec![];
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        // our decoder
+        let mut decoder = DeflateDecoder::new(compressed.as_slice());
+        let mut decompressed = vec![];
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(data.len(), decompressed.len());
         assert!(same_same(&data, &decompressed));
     }
 }
