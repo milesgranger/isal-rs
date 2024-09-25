@@ -312,13 +312,19 @@ mod tests {
     use std::io::{self, Cursor};
 
     #[test]
-    fn large_roundtrip() {
-        let input = gen_large_data();
+    fn roundtrip_small() {
+        roundtrip(b"foobar")
+    }
+    #[test]
+    fn roundtrip_large() {
+        roundtrip(&gen_large_data())
+    }
+    fn roundtrip(input: &[u8]) {
         let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output).unwrap();
-        assert!(n < input.len() as u64);
+        assert_eq!(n as usize, output.len());
 
         let mut decoder = Decoder::new(Cursor::new(output), Codec::Gzip);
         let mut decompressed = vec![];
@@ -329,8 +335,14 @@ mod tests {
     }
 
     #[test]
-    fn basic_compress() -> Result<()> {
-        let input = b"hello, world!";
+    fn basic_compress_small() -> Result<()> {
+        basic_compress(b"foobar")
+    }
+    #[test]
+    fn basic_compress_large() -> Result<()> {
+        basic_compress(&gen_large_data())
+    }
+    fn basic_compress(input: &[u8]) -> Result<()> {
         let mut encoder = Encoder::new(Cursor::new(input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
@@ -363,8 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn basic_decompress() -> Result<()> {
-        let input = b"hello, world!";
+    fn basic_decompress_small() -> Result<()> {
+        basic_decompress(b"foobar")
+    }
+    #[test]
+    fn basic_decompress_large() -> Result<()> {
+        basic_decompress(&gen_large_data())
+    }
+    fn basic_decompress(input: &[u8]) -> Result<()> {
         let compressed = compress(Cursor::new(input), CompressionLevel::Three, Codec::Gzip)?;
 
         let mut decoder = Decoder::new(compressed.as_slice(), Codec::Gzip);
@@ -400,11 +418,16 @@ mod tests {
     }
 
     #[test]
-    fn flate2_gzip_compat_encoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_gzip_compat_encoder_out_small() {
+        flate2_gzip_compat_encoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_gzip_compat_encoder_out_large() {
+        flate2_gzip_compat_encoder_out(&gen_large_data())
+    }
+    fn flate2_gzip_compat_encoder_out(data: &[u8]) {
         // our encoder
-        let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, Codec::Gzip);
+        let mut encoder = Encoder::new(data, CompressionLevel::Three, Codec::Gzip);
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 
@@ -417,12 +440,16 @@ mod tests {
     }
 
     #[test]
-    fn flate2_gzip_compat_decoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_gzip_compat_decoder_out_small() {
+        flate2_gzip_compat_decoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_gzip_compat_decoder_out_large() {
+        flate2_gzip_compat_decoder_out(&gen_large_data())
+    }
+    fn flate2_gzip_compat_decoder_out(data: &[u8]) {
         // their encoder
-        let mut encoder =
-            flate2::read::GzEncoder::new(data.as_slice(), flate2::Compression::fast());
+        let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::fast());
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 
@@ -435,11 +462,16 @@ mod tests {
     }
 
     #[test]
-    fn flate2_deflate_compat_encoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_deflate_compat_encoder_out_small() {
+        flate2_deflate_compat_encoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_deflate_compat_encoder_out_large() {
+        flate2_deflate_compat_encoder_out(&gen_large_data())
+    }
+    fn flate2_deflate_compat_encoder_out(data: &[u8]) {
         // our encoder
-        let mut encoder = DeflateEncoder::new(data.as_slice(), CompressionLevel::Three);
+        let mut encoder = DeflateEncoder::new(data, CompressionLevel::Three);
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 
@@ -452,12 +484,16 @@ mod tests {
     }
 
     #[test]
-    fn flate2_deflate_compat_decoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_deflate_compat_decoder_out_small() {
+        flate2_deflate_compat_decoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_deflate_compat_decoder_out_large() {
+        flate2_deflate_compat_decoder_out(&gen_large_data())
+    }
+    fn flate2_deflate_compat_decoder_out(data: &[u8]) {
         // their encoder
-        let mut encoder =
-            flate2::read::DeflateEncoder::new(data.as_slice(), flate2::Compression::fast());
+        let mut encoder = flate2::read::DeflateEncoder::new(data, flate2::Compression::fast());
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 

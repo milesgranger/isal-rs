@@ -351,9 +351,14 @@ pub mod tests {
     use std::io::Write;
 
     #[test]
-    fn test_encoder_basic() {
-        let data = gen_large_data();
-
+    fn test_encoder_basic_small() {
+        test_encoder_basic(&gen_large_data())
+    }
+    #[test]
+    fn test_encoder_basic_large() {
+        test_encoder_basic(&gen_large_data())
+    }
+    fn test_encoder_basic(data: &[u8]) {
         let mut compressed = vec![];
         let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, Codec::Gzip);
         let nbytes = io::copy(&mut io::Cursor::new(&data), &mut encoder).unwrap();
@@ -398,9 +403,14 @@ pub mod tests {
     }
 
     #[test]
-    fn test_decoder_basic() {
-        let data = gen_large_data();
-
+    fn test_decoder_basic_small() {
+        test_decoder_basic(b"foobar")
+    }
+    #[test]
+    fn test_decoder_basic_large() {
+        test_decoder_basic(&gen_large_data())
+    }
+    fn test_decoder_basic(data: &[u8]) {
         let compressed =
             crate::igzip::compress(io::Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)
                 .unwrap();
@@ -441,9 +451,14 @@ pub mod tests {
     }
 
     #[test]
-    fn flate2_gzip_compat_encoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_gzip_compat_encoder_out_small() {
+        flate2_gzip_compat_encoder_out(b"foobar")
+    }
+    #[test]
+    fn flate2_gzip_compat_encoder_out_large() {
+        flate2_gzip_compat_encoder_out(&gen_large_data())
+    }
+    fn flate2_gzip_compat_encoder_out(data: &[u8]) {
         // our encoder
         let mut compressed = vec![];
         {
@@ -464,9 +479,14 @@ pub mod tests {
     }
 
     #[test]
-    fn flate2_gzip_compat_decoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_gzip_compat_decoder_out_small() {
+        flate2_gzip_compat_decoder_out(b"foobar");
+    }
+    #[test]
+    fn flate2_gzip_compat_decoder_out_large() {
+        flate2_gzip_compat_decoder_out(&gen_large_data());
+    }
+    fn flate2_gzip_compat_decoder_out(data: &[u8]) {
         // their encoder
         let mut compressed = vec![];
         {
@@ -488,9 +508,14 @@ pub mod tests {
     }
 
     #[test]
-    fn flate2_deflate_compat_encoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_deflate_compat_encoder_out_small() {
+        flate2_deflate_compat_encoder_out(b"foobar");
+    }
+    #[test]
+    fn flate2_deflate_compat_encoder_out_large() {
+        flate2_deflate_compat_encoder_out(&gen_large_data());
+    }
+    fn flate2_deflate_compat_encoder_out(data: &[u8]) {
         // our encoder
         let mut compressed = vec![];
         {
@@ -511,9 +536,14 @@ pub mod tests {
     }
 
     #[test]
-    fn flate2_deflate_compat_decoder_out() {
-        let data = gen_large_data();
-
+    fn flate2_deflate_compat_decoder_out_small() {
+        flate2_deflate_compat_decoder_out(b"foobar");
+    }
+    #[test]
+    fn flate2_deflate_compat_decoder_out_large() {
+        flate2_deflate_compat_decoder_out(&gen_large_data());
+    }
+    fn flate2_deflate_compat_decoder_out(data: &[u8]) {
         // their encoder
         let mut compressed = vec![];
         {
