@@ -3,6 +3,47 @@ use crate::igzip::*;
 use std::io;
 use std::io::Write;
 
+pub struct DeflateEncoder<R: io::Write> {
+    inner: Encoder<R>,
+}
+
+impl<W: io::Write> DeflateEncoder<W> {
+    pub fn new(writer: W, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(writer, level, Codec::Deflate),
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for DeflateEncoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+pub struct DeflateDecoder<W: io::Write> {
+    inner: Decoder<W>,
+}
+
+impl<W: io::Write> DeflateDecoder<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            inner: Decoder::new(writer, Codec::Deflate),
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for DeflateDecoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 /// Streaming compression for input streams implementing `std::io::Write`.
 ///
 /// Notes
@@ -173,7 +214,7 @@ impl<W: io::Write> io::Write for Encoder<W> {
 /// let compressed = compress(io::Cursor::new(data.as_slice()), CompressionLevel::Three, Codec::Gzip).unwrap();
 ///
 /// let mut decompressed = vec![];
-/// let mut decoder = Decoder::new(&mut decompressed);
+/// let mut decoder = Decoder::new(&mut decompressed, Codec::Gzip);
 ///
 /// // Numbeer of compressed bytes written to `output`
 /// let n = io::copy(&mut io::Cursor::new(&compressed), &mut decoder).unwrap();
@@ -186,12 +227,13 @@ pub struct Decoder<W: io::Write> {
     out_buf: Vec<u8>,
     dsts: usize,
     dste: usize,
+    codec: Codec,
 }
 
 impl<W: io::Write> Decoder<W> {
-    pub fn new(writer: W) -> Decoder<W> {
+    pub fn new(writer: W, codec: Codec) -> Decoder<W> {
         let mut zst = InflateState::new();
-        zst.0.crc_flag = isal::IGZIP_GZIP;
+        zst.0.crc_flag = codec as _;
 
         Self {
             inner: writer,
@@ -199,6 +241,7 @@ impl<W: io::Write> Decoder<W> {
             out_buf: Vec::with_capacity(BUF_SIZE),
             dste: 0,
             dsts: 0,
+            codec,
         }
     }
 
@@ -342,7 +385,7 @@ pub mod tests {
                 .unwrap();
 
         let mut decompressed = vec![];
-        let mut decoder = Decoder::new(&mut decompressed);
+        let mut decoder = Decoder::new(&mut decompressed, Codec::Gzip);
         let nbytes = io::copy(&mut io::Cursor::new(&compressed), &mut decoder).unwrap();
         assert_eq!(nbytes, compressed.len() as u64);
         assert!(same_same(&decompressed, &data));
@@ -369,7 +412,7 @@ pub mod tests {
         );
 
         let mut decompressed = vec![];
-        let mut decoder = Decoder::new(&mut decompressed);
+        let mut decoder = Decoder::new(&mut decompressed, Codec::Gzip);
 
         let nbytes = io::copy(&mut io::Cursor::new(&compressed), &mut decoder).unwrap();
         assert_eq!(nbytes, compressed.len() as _);
@@ -415,11 +458,64 @@ pub mod tests {
         // our decoder
         let mut decompressed = vec![];
         {
-            let mut decoder = Decoder::new(&mut decompressed);
+            let mut decoder = Decoder::new(&mut decompressed, Codec::Gzip);
             io::copy(&mut Cursor::new(&compressed), &mut decoder).unwrap();
             decoder.flush().unwrap();
         }
 
+        assert!(same_same(&data, &decompressed));
+    }
+
+    #[test]
+    fn flate2_deflate_compat_encoder_out() {
+        let data = gen_large_data();
+
+        // our encoder
+        let mut compressed = vec![];
+        {
+            let mut encoder = DeflateEncoder::new(&mut compressed, CompressionLevel::Three);
+            io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
+            encoder.flush().unwrap(); // TODO: impl flush on drop
+        }
+
+        // their decoder
+        let mut decompressed = vec![];
+        {
+            let mut decoder = flate2::write::DeflateDecoder::new(&mut decompressed);
+            io::copy(&mut Cursor::new(&compressed), &mut decoder).unwrap();
+            decoder.flush().unwrap();
+        }
+
+        assert!(same_same(&data, &decompressed));
+    }
+
+    #[test]
+    fn flate2_deflate_compat_decoder_out() {
+        let data = gen_large_data();
+
+        // their encoder
+        let mut compressed = vec![];
+        {
+            let mut encoder =
+                flate2::write::DeflateEncoder::new(&mut compressed, flate2::Compression::fast());
+            io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
+            encoder.flush().unwrap();
+        }
+
+        // our decoder
+        let mut decompressed = vec![];
+        {
+            let mut decoder = DeflateDecoder::new(&mut decompressed);
+            io::copy(&mut Cursor::new(&compressed), &mut decoder).unwrap();
+            decoder.flush().unwrap(); // TODO: impl flush on drop
+        }
+
+        println!(
+            "data.len() - decompressed.len() = {}",
+            data.len() - decompressed.len()
+        );
+
+        assert_eq!(data.len(), decompressed.len());
         assert!(same_same(&data, &decompressed));
     }
 }
