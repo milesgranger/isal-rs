@@ -251,14 +251,8 @@ impl<R: io::Read> io::Read for Decoder<R> {
 mod tests {
 
     use super::*;
+    use crate::igzip::tests::{gen_large_data, same_same};
     use std::io::{self, Cursor};
-
-    fn gen_large_data() -> Vec<u8> {
-        (0..1_000_000)
-            .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
-            .flat_map(|v| v)
-            .collect()
-    }
 
     #[test]
     fn large_roundtrip() {
@@ -274,6 +268,7 @@ mod tests {
         let nbytes = io::copy(&mut decoder, &mut decompressed).unwrap();
 
         assert_eq!(nbytes as usize, input.len());
+        assert!(same_same(&input, &decompressed));
     }
 
     #[test]
@@ -306,7 +301,7 @@ mod tests {
         let n = io::copy(&mut encoder, &mut output)? as usize;
         let decompressed = decompress(&output[..n])?;
 
-        assert_eq!(input, decompressed.as_slice());
+        assert!(same_same(&input, decompressed.as_slice()));
         Ok(())
     }
 
@@ -342,8 +337,43 @@ mod tests {
 
         let n = io::copy(&mut decoder, &mut decompressed)? as usize;
         assert_eq!(n, decompressed.len());
-        assert_eq!(input, decompressed.as_slice());
+        assert!(same_same(&input, decompressed.as_slice()));
 
         Ok(())
+    }
+
+    #[test]
+    fn flate2_gzip_compat_encoder_out() {
+        let data = gen_large_data();
+
+        // our encoder
+        let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+        let mut compressed = vec![];
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        // their decoder
+        let mut decoder = flate2::read::GzDecoder::new(compressed.as_slice());
+        let mut decompressed = vec![];
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert!(same_same(&data, &decompressed));
+    }
+
+    #[test]
+    fn flate2_gzip_compat_decoder_out() {
+        let data = gen_large_data();
+
+        // their encoder
+        let mut encoder =
+            flate2::read::GzEncoder::new(data.as_slice(), flate2::Compression::fast());
+        let mut compressed = vec![];
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        // our decoder
+        let mut decoder = Decoder::new(compressed.as_slice());
+        let mut decompressed = vec![];
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert!(same_same(&data, &decompressed));
     }
 }

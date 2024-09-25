@@ -280,15 +280,11 @@ impl<W: io::Write> io::Write for Decoder<W> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use std::io::Write;
+    use io::Cursor;
 
-    fn gen_large_data() -> Vec<u8> {
-        (0..1_000_000)
-            .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
-            .flat_map(|v| v)
-            .collect()
-    }
+    use super::*;
+    use crate::igzip::tests::{gen_large_data, same_same};
+    use std::io::Write;
 
     #[test]
     fn test_encoder_basic() {
@@ -314,7 +310,7 @@ pub mod tests {
 
         // and can be decompressed
         let decompressed = crate::igzip::decompress(io::Cursor::new(&compressed)).unwrap();
-        assert_eq!(decompressed.len(), data.len());
+        assert!(same_same(&decompressed, &data));
     }
 
     #[test]
@@ -348,7 +344,7 @@ pub mod tests {
         let mut decoder = Decoder::new(&mut decompressed);
         let nbytes = io::copy(&mut io::Cursor::new(&compressed), &mut decoder).unwrap();
         assert_eq!(nbytes, compressed.len() as u64);
-        assert_eq!(decompressed.len(), data.len());
+        assert!(same_same(&decompressed, &data));
     }
 
     #[test]
@@ -369,5 +365,52 @@ pub mod tests {
         let nbytes = io::copy(&mut io::Cursor::new(&compressed), &mut decoder).unwrap();
         assert_eq!(nbytes, compressed.len() as _);
         assert_eq!(&decompressed, b"foobar");
+    }
+
+    #[test]
+    fn flate2_gzip_compat_encoder_out() {
+        let data = gen_large_data();
+
+        // our encoder
+        let mut compressed = vec![];
+        {
+            let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, true);
+            io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
+            encoder.flush().unwrap();
+        }
+
+        // their decoder
+        let mut decompressed = vec![];
+        {
+            let mut decoder = flate2::write::GzDecoder::new(&mut decompressed);
+            io::copy(&mut Cursor::new(&compressed), &mut decoder).unwrap();
+            decoder.flush().unwrap();
+        }
+
+        assert!(same_same(&data, &decompressed));
+    }
+
+    #[test]
+    fn flate2_gzip_compat_decoder_out() {
+        let data = gen_large_data();
+
+        // their encoder
+        let mut compressed = vec![];
+        {
+            let mut encoder =
+                flate2::write::GzEncoder::new(&mut compressed, flate2::Compression::fast());
+            io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
+            encoder.flush().unwrap();
+        }
+
+        // our decoder
+        let mut decompressed = vec![];
+        {
+            let mut decoder = Decoder::new(&mut decompressed);
+            io::copy(&mut Cursor::new(&compressed), &mut decoder).unwrap();
+            decoder.flush().unwrap();
+        }
+
+        assert!(same_same(&data, &decompressed));
     }
 }
