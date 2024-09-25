@@ -480,7 +480,7 @@ pub mod tests {
     fn flate2_zlib_compat_compress_into() {
         let data = b"foobar";
 
-        let mut compressed = vec![0u8; 1_000];
+        let mut compressed = vec![0u8; 100];
         let n = compress_into(
             data.as_slice(),
             &mut compressed,
