@@ -63,7 +63,7 @@ pub fn compress<R: std::io::Read>(
 #[inline(always)]
 pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
     let mut out = vec![];
-    let mut decoder = read::Decoder::new(input);
+    let mut decoder = read::Decoder::new(input, Codec::Gzip);
     io::copy(&mut decoder, &mut out)?;
     Ok(out)
 }
