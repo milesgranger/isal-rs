@@ -1,6 +1,5 @@
 //! Encoder and Decoder implementing `std::io::Read`
 use crate::igzip::*;
-use mem::MaybeUninit;
 use std::io;
 
 /// Deflate decompression
@@ -64,7 +63,7 @@ impl<R: io::Read> io::Read for DeflateDecoder<R> {
 /// let n = io::copy(&mut encoder, &mut compressed).unwrap();
 /// assert_eq!(n as usize, compressed.len());
 ///
-/// let decompressed = decompress(io::Cursor::new(compressed)).unwrap();
+/// let decompressed = decompress(io::Cursor::new(compressed), Codec::Gzip).unwrap();
 /// assert_eq!(decompressed.as_slice(), data);
 /// ```
 pub struct Encoder<R: io::Read> {
@@ -249,16 +248,29 @@ impl<R: io::Read> io::Read for Decoder<R> {
 
             let mut n_bytes = 0;
             while self.zst.0.avail_in != 0 {
-                if self.codec == Codec::Gzip
-                    && self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR
-                {
-                    // Read this member's gzip header
-                    let mut gz_hdr: MaybeUninit<isal::isal_gzip_header> = MaybeUninit::uninit();
-                    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
-                    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
-                    read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
-                }
+                if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                    // Read gzip header
+                    if self.codec == Codec::Gzip {
+                        // Read this member's gzip header
+                        let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
+                            mem::MaybeUninit::uninit();
+                        unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+                        let mut gz_hdr = unsafe { gz_hdr.assume_init() };
+                        read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
 
+                    // Read zlib header
+                    } else if self.codec == Codec::Zlib {
+                        self.zst.0.crc_flag = 0; // TODO: manually validate CRC?
+
+                        let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
+                            mem::MaybeUninit::uninit();
+                        unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
+                        let mut hdr = unsafe { hdr.assume_init() };
+                        read_zlib_header(&mut self.zst.0, &mut hdr)?;
+                        self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
+                        self.zst.0.avail_in -= 4; // 2 off the top, exclude crc
+                    }
+                }
                 // TODO: I'm pretty sure we can remove out_buf
                 // decompress member
                 loop {
@@ -273,7 +285,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
 
                     let state = self.zst.block_state();
                     match self.codec {
-                        Codec::Deflate => {
+                        Codec::Deflate | Codec::Zlib => {
                             if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
                                 break;
 
@@ -294,7 +306,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
                                 break;
                             }
                         }
-                        Codec::Zlib => unimplemented!(),
                     }
                 }
                 if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
@@ -353,7 +364,7 @@ mod tests {
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output)? as usize;
-        let decompressed = decompress(&output[..n])?;
+        let decompressed = decompress(&output[..n], Codec::Gzip)?;
 
         assert_eq!(input, decompressed.as_slice());
         Ok(())
@@ -374,7 +385,7 @@ mod tests {
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output)? as usize;
-        let decompressed = decompress(&output[..n])?;
+        let decompressed = decompress(&output[..n], Codec::Gzip)?;
 
         assert!(same_same(&input, decompressed.as_slice()));
         Ok(())
