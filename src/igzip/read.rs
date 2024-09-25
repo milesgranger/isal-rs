@@ -2,124 +2,6 @@
 use crate::igzip::*;
 use std::io;
 
-/// Deflate decompression
-/// Basically a wrapper to `Encoder` which sets the codec for you.
-pub struct DeflateEncoder<R: io::Read> {
-    inner: Encoder<R>,
-}
-
-impl<R: io::Read> DeflateEncoder<R> {
-    pub fn new(reader: R, level: CompressionLevel) -> Self {
-        Self {
-            inner: Encoder::new(reader, level, Codec::Deflate),
-        }
-    }
-}
-
-impl<R: io::Read> io::Read for DeflateEncoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
-    }
-}
-
-/// Deflate decompression
-/// Basically a wrapper to `Decoder` which sets the codec for you.
-pub struct DeflateDecoder<R: io::Read> {
-    inner: Decoder<R>,
-}
-
-impl<R: io::Read> DeflateDecoder<R> {
-    pub fn new(reader: R) -> Self {
-        Self {
-            inner: Decoder::new(reader, Codec::Deflate),
-        }
-    }
-}
-
-impl<R: io::Read> io::Read for DeflateDecoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
-    }
-}
-/// Zlib decompression
-/// Basically a wrapper to `Encoder` which sets the codec for you.
-pub struct ZlibEncoder<R: io::Read> {
-    inner: Encoder<R>,
-}
-
-impl<R: io::Read> ZlibEncoder<R> {
-    pub fn new(reader: R, level: CompressionLevel) -> Self {
-        Self {
-            inner: Encoder::new(reader, level, Codec::Zlib),
-        }
-    }
-}
-
-impl<R: io::Read> io::Read for ZlibEncoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
-    }
-}
-
-/// Zlib decompression
-/// Basically a wrapper to `Decoder` which sets the codec for you.
-pub struct ZlibDecoder<R: io::Read> {
-    inner: Decoder<R>,
-}
-
-impl<R: io::Read> ZlibDecoder<R> {
-    pub fn new(reader: R) -> Self {
-        Self {
-            inner: Decoder::new(reader, Codec::Zlib),
-        }
-    }
-}
-
-impl<R: io::Read> io::Read for ZlibDecoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
-    }
-}
-/// Gzip decompression
-/// Basically a wrapper to `Encoder` which sets the codec for you.
-pub struct GzipEncoder<R: io::Read> {
-    inner: Encoder<R>,
-}
-
-impl<R: io::Read> GzipEncoder<R> {
-    pub fn new(reader: R, level: CompressionLevel) -> Self {
-        Self {
-            inner: Encoder::new(reader, level, Codec::Gzip),
-        }
-    }
-}
-
-impl<R: io::Read> io::Read for GzipEncoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
-    }
-}
-
-/// Gzip decompression
-/// Basically a wrapper to `Decoder` which sets the codec for you.
-pub struct GzipDecoder<R: io::Read> {
-    inner: Decoder<R>,
-}
-
-impl<R: io::Read> GzipDecoder<R> {
-    pub fn new(reader: R) -> Self {
-        Self {
-            inner: Decoder::new(reader, Codec::Gzip),
-        }
-    }
-}
-
-impl<R: io::Read> io::Read for GzipDecoder<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.read(buf)
-    }
-}
-
 /// Streaming compression for input streams implementing `std::io::Read`.
 ///
 /// Notes
@@ -323,6 +205,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
             debug_assert_eq!(self.zst.0.avail_in, 0);
             self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
             self.zst.0.next_in = self.in_buf.as_mut_ptr();
+            let avail_in_original = self.zst.0.avail_in;
 
             let mut n_bytes = 0;
             while self.zst.0.avail_in != 0 {
@@ -338,7 +221,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
 
                     // Read zlib header
                     } else if self.codec == Codec::Zlib {
-                        self.zst.0.crc_flag = 0; // TODO: manually validate CRC?
+                        self.zst.0.crc_flag = 0; // zlib uses adler-32 checksum
 
                         let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
                             mem::MaybeUninit::uninit();
@@ -346,7 +229,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                         let mut hdr = unsafe { hdr.assume_init() };
                         read_zlib_header(&mut self.zst.0, &mut hdr)?;
                         self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                        self.zst.0.avail_in -= 4; // 2 off the top, exclude crc
+                        self.zst.0.avail_in -= 4; // skip adler-32
                     }
                 }
                 // TODO: I'm pretty sure we can remove out_buf
@@ -390,12 +273,149 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     self.zst.reset();
                 }
             }
+
+            // Check adler
+            if self.codec == Codec::Zlib && avail_in_original > 4 {
+                let decompressed = &self.out_buf[..n_bytes];
+                let c_adler32 = unsafe {
+                    isal::isal_adler32(1, decompressed.as_ptr(), decompressed.len() as _)
+                };
+                let bytes: [u8; 4] = (&self.in_buf
+                    [avail_in_original as usize - 4..avail_in_original as usize])
+                    .try_into()
+                    .unwrap();
+                let e_adler32 = u32::from_be_bytes(bytes);
+                if c_adler32 != e_adler32 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        crate::error::Error::DecompressionError(DecompCode::IncorrectChecksum),
+                    ));
+                }
+            }
             self.out_buf.truncate(n_bytes);
             self.dste = n_bytes;
             self.dsts = 0;
 
             Ok(self.read_from_out_buf(buf))
         }
+    }
+}
+
+/// Deflate decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct DeflateEncoder<R: io::Read> {
+    inner: Encoder<R>,
+}
+
+impl<R: io::Read> DeflateEncoder<R> {
+    pub fn new(reader: R, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(reader, level, Codec::Deflate),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for DeflateEncoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Deflate decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct DeflateDecoder<R: io::Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: io::Read> DeflateDecoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            inner: Decoder::new(reader, Codec::Deflate),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for DeflateDecoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+/// Zlib decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct ZlibEncoder<R: io::Read> {
+    inner: Encoder<R>,
+}
+
+impl<R: io::Read> ZlibEncoder<R> {
+    pub fn new(reader: R, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(reader, level, Codec::Zlib),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for ZlibEncoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Zlib decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct ZlibDecoder<R: io::Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: io::Read> ZlibDecoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            inner: Decoder::new(reader, Codec::Zlib),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for ZlibDecoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+/// Gzip decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct GzipEncoder<R: io::Read> {
+    inner: Encoder<R>,
+}
+
+impl<R: io::Read> GzipEncoder<R> {
+    pub fn new(reader: R, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(reader, level, Codec::Gzip),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for GzipEncoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Gzip decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct GzipDecoder<R: io::Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: io::Read> GzipDecoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            inner: Decoder::new(reader, Codec::Gzip),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for GzipDecoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
     }
 }
 
