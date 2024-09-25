@@ -495,4 +495,42 @@ pub mod tests {
 
         assert_eq!(data, decompressed.as_slice());
     }
+    #[test]
+    fn flate2_zlib_compat_compress() {
+        let data = b"foobar";
+
+        let compressed = compress(data.as_slice(), CompressionLevel::One, Codec::Zlib).unwrap();
+
+        let mut decompressed = vec![];
+        let mut decoder = flate2::read::ZlibDecoder::new(compressed.as_slice());
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(data, decompressed.as_slice());
+    }
+    #[test]
+    fn flate2_zlib_compat_decompress() {
+        let data = b"foobar";
+
+        let mut compressed = vec![];
+        let mut encoder =
+            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        let decompressed = decompress(compressed.as_slice()).unwrap();
+        assert_eq!(data, decompressed.as_slice());
+    }
+    #[test]
+    fn flate2_zlib_compat_decompress_into() {
+        let data = b"foobar";
+
+        let mut compressed = vec![];
+        let mut encoder =
+            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        let mut decompressed = vec![0u8; data.len()];
+        let n = decompress_into(compressed.as_slice(), &mut decompressed).unwrap();
+        assert_eq!(n, data.len());
+        assert_eq!(data, decompressed.as_slice());
+    }
 }
