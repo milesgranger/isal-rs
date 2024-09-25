@@ -303,7 +303,7 @@ pub fn read_gzip_header(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use io::Cursor;
     use md5;
@@ -312,14 +312,14 @@ mod tests {
     use super::*;
 
     // Default testing data
-    fn gen_large_data() -> Vec<u8> {
+    pub fn gen_large_data() -> Vec<u8> {
         (0..(BUF_SIZE * 2) + 1)
             .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
             .flat_map(|v| v)
             .collect()
     }
 
-    fn same_same(a: &[u8], b: &[u8]) -> bool {
+    pub fn same_same(a: &[u8], b: &[u8]) -> bool {
         md5::compute(a) == md5::compute(b)
     }
 

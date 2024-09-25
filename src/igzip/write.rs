@@ -283,14 +283,8 @@ pub mod tests {
     use io::Cursor;
 
     use super::*;
+    use crate::igzip::tests::{gen_large_data, same_same};
     use std::io::Write;
-
-    fn gen_large_data() -> Vec<u8> {
-        (0..(BUF_SIZE * 2) + 1)
-            .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
-            .flat_map(|v| v)
-            .collect()
-    }
 
     #[test]
     fn test_encoder_basic() {
@@ -316,7 +310,7 @@ pub mod tests {
 
         // and can be decompressed
         let decompressed = crate::igzip::decompress(io::Cursor::new(&compressed)).unwrap();
-        assert_eq!(decompressed.len(), data.len());
+        assert!(same_same(&decompressed, &data));
     }
 
     #[test]
@@ -350,7 +344,7 @@ pub mod tests {
         let mut decoder = Decoder::new(&mut decompressed);
         let nbytes = io::copy(&mut io::Cursor::new(&compressed), &mut decoder).unwrap();
         assert_eq!(nbytes, compressed.len() as u64);
-        assert_eq!(decompressed.len(), data.len());
+        assert!(same_same(&decompressed, &data));
     }
 
     #[test]
@@ -393,7 +387,7 @@ pub mod tests {
             decoder.flush().unwrap();
         }
 
-        assert_eq!(&data, &decompressed);
+        assert!(same_same(&data, &decompressed));
     }
 
     #[test]
@@ -417,6 +411,6 @@ pub mod tests {
             decoder.flush().unwrap();
         }
 
-        assert_eq!(&data, &decompressed);
+        assert!(same_same(&data, &decompressed));
     }
 }
