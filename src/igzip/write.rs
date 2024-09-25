@@ -3,6 +3,8 @@ use crate::igzip::*;
 use std::io;
 use std::io::Write;
 
+/// Deflate compression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
 pub struct DeflateEncoder<R: io::Write> {
     inner: Encoder<R>,
 }
@@ -23,6 +25,9 @@ impl<W: io::Write> io::Write for DeflateEncoder<W> {
         self.inner.flush()
     }
 }
+
+/// Deflate decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
 pub struct DeflateDecoder<W: io::Write> {
     inner: Decoder<W>,
 }

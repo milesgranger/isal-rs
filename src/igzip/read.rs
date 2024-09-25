@@ -3,6 +3,8 @@ use crate::igzip::*;
 use mem::MaybeUninit;
 use std::io;
 
+/// Deflate decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
 pub struct DeflateEncoder<R: io::Read> {
     inner: Encoder<R>,
 }
@@ -20,6 +22,9 @@ impl<R: io::Read> io::Read for DeflateEncoder<R> {
         self.inner.read(buf)
     }
 }
+
+/// Deflate decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
 pub struct DeflateDecoder<R: io::Read> {
     inner: Decoder<R>,
 }
