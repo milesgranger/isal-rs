@@ -294,6 +294,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                                 break;
                             }
                         }
+                        Codec::Zlib => unimplemented!(),
                     }
                 }
                 if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {

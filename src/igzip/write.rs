@@ -324,6 +324,7 @@ impl<W: io::Write> io::Write for Decoder<W> {
                             break;
                         }
                     }
+                    Codec::Zlib => unimplemented!(),
                 }
             }
             if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {

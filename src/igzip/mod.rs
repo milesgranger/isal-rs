@@ -18,6 +18,7 @@ pub const BUF_SIZE: usize = 16 * 1024;
 pub enum Codec {
     Gzip = isal::IGZIP_GZIP,
     Deflate = isal::IGZIP_DEFLATE,
+    Zlib = isal::IGZIP_ZLIB,
 }
 
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
@@ -476,16 +477,20 @@ pub mod tests {
     }
 
     #[test]
-    fn flate2_zlib_compat_compress() {
+    fn flate2_zlib_compat_compress_into() {
         let data = b"foobar";
 
-        let mut compressed = vec![];
-        let mut encoder =
-            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
-        io::copy(&mut encoder, &mut compressed).unwrap();
+        let mut compressed = vec![0u8; 1_000];
+        let n = compress_into(
+            data.as_slice(),
+            &mut compressed,
+            CompressionLevel::One,
+            Codec::Zlib,
+        )
+        .unwrap();
 
         let mut decompressed = vec![];
-        let mut decoder = flate2::read::ZlibDecoder::new(compressed.as_slice());
+        let mut decoder = flate2::read::ZlibDecoder::new(&compressed[..n]);
         io::copy(&mut decoder, &mut decompressed).unwrap();
 
         assert_eq!(data, decompressed.as_slice());
