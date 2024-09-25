@@ -474,4 +474,20 @@ pub mod tests {
         assert!(same_same(&data, &decompressed));
         Ok(())
     }
+
+    #[test]
+    fn flate2_zlib_compat_compress() {
+        let data = b"foobar";
+
+        let mut compressed = vec![];
+        let mut encoder =
+            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        let mut decompressed = vec![];
+        let mut decoder = flate2::read::ZlibDecoder::new(compressed.as_slice());
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(data, decompressed.as_slice());
+    }
 }
