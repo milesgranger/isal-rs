@@ -271,6 +271,13 @@ impl<R: io::Read> io::Read for Decoder<R> {
                         Codec::Deflate => {
                             if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
                                 break;
+
+                            // refill avail in, still actively decoding but reached end of input
+                            } else if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                                && self.zst.0.avail_in == 0
+                            {
+                                self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                                self.zst.0.next_in = self.in_buf.as_mut_ptr();
                             }
                         }
                         Codec::Gzip => {
