@@ -14,10 +14,10 @@ use std::io;
 /// -------
 /// ```
 /// use std::{io, io::Read};
-/// use isal::igzip::{read::Encoder, CompressionLevel, decompress};
+/// use isal::igzip::{read::Encoder, CompressionLevel, decompress, Codec};
 /// let data = b"Hello, World!".to_vec();
 ///
-/// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+/// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, Codec::Gzip);
 /// let mut compressed = vec![];
 ///
 /// // Numbeer of compressed bytes written to `output`
@@ -38,7 +38,7 @@ pub struct Encoder<R: io::Read> {
 
 impl<R: io::Read> Encoder<R> {
     /// Create a new `Encoder` which implements the `std::io::Read` trait.
-    pub fn new(reader: R, level: CompressionLevel, is_gzip: bool) -> Encoder<R> {
+    pub fn new(reader: R, level: CompressionLevel, codec: Codec) -> Encoder<R> {
         let in_buf = [0_u8; BUF_SIZE];
         let out_buf = Vec::with_capacity(BUF_SIZE);
 
@@ -46,7 +46,7 @@ impl<R: io::Read> Encoder<R> {
 
         zstream.stream.end_of_stream = 0;
         zstream.stream.flush = FlushFlags::SyncFlush as _;
-        zstream.stream.gzip_flag = is_gzip as _;
+        zstream.stream.gzip_flag = codec as _;
 
         Self {
             inner: reader,
@@ -133,10 +133,10 @@ impl<R: io::Read> io::Read for Encoder<R> {
 /// -------
 /// ```
 /// use std::{io, io::Read};
-/// use isal::igzip::{read::Decoder, CompressionLevel, compress};
+/// use isal::igzip::{read::Decoder, CompressionLevel, compress, Codec};
 /// let data = b"Hello, World!".to_vec();
 ///
-/// let compressed = compress(data.as_slice(), CompressionLevel::Three, true).unwrap();
+/// let compressed = compress(data.as_slice(), CompressionLevel::Three, Codec::Gzip).unwrap();
 /// let mut decoder = Decoder::new(compressed.as_slice());
 /// let mut decompressed = vec![];
 ///
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn large_roundtrip() {
         let input = gen_large_data();
-        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output).unwrap();
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn basic_compress() -> Result<()> {
         let input = b"hello, world!";
-        let mut encoder = Encoder::new(Cursor::new(input), CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(Cursor::new(input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output)? as usize;
@@ -295,7 +295,7 @@ mod tests {
             }
         }
 
-        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(Cursor::new(&input), CompressionLevel::Three, Codec::Gzip);
         let mut output = vec![];
 
         let n = io::copy(&mut encoder, &mut output)? as usize;
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn basic_decompress() -> Result<()> {
         let input = b"hello, world!";
-        let compressed = compress(Cursor::new(input), CompressionLevel::Three, true)?;
+        let compressed = compress(Cursor::new(input), CompressionLevel::Three, Codec::Gzip)?;
 
         let mut decoder = Decoder::new(compressed.as_slice());
         let mut decompressed = vec![];
@@ -330,7 +330,7 @@ mod tests {
             }
         }
 
-        let compressed = compress(input.as_slice(), CompressionLevel::Three, true)?;
+        let compressed = compress(input.as_slice(), CompressionLevel::Three, Codec::Gzip)?;
 
         let mut decoder = Decoder::new(compressed.as_slice());
         let mut decompressed = vec![];
@@ -347,7 +347,7 @@ mod tests {
         let data = gen_large_data();
 
         // our encoder
-        let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, Codec::Gzip);
         let mut compressed = vec![];
         io::copy(&mut encoder, &mut compressed).unwrap();
 

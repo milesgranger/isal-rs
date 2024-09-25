@@ -14,12 +14,12 @@ use std::io::Write;
 /// -------
 /// ```
 /// use std::{io, io::Write};
-/// use isal::igzip::{write::Encoder, CompressionLevel, decompress};
+/// use isal::igzip::{write::Encoder, CompressionLevel, decompress, Codec};
 ///
 /// let data = b"Hello, World!".to_vec();
 /// let mut compressed = vec![];
 ///
-/// let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, true);
+/// let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, Codec::Gzip);
 ///
 /// // Numbeer of compressed bytes written to `output`
 /// io::copy(&mut io::Cursor::new(&data), &mut encoder).unwrap();
@@ -43,14 +43,14 @@ pub struct Encoder<W: io::Write> {
 
 impl<W: io::Write> Encoder<W> {
     /// Create a new `Encoder` which implements the `std::io::Read` trait.
-    pub fn new(writer: W, level: CompressionLevel, is_gzip: bool) -> Encoder<W> {
+    pub fn new(writer: W, level: CompressionLevel, codec: Codec) -> Encoder<W> {
         let out_buf = Vec::with_capacity(BUF_SIZE);
 
         let mut zstream = ZStream::new(level, ZStreamKind::Stateful);
 
         zstream.stream.end_of_stream = 0;
         zstream.stream.flush = FlushFlags::NoFlush as _;
-        zstream.stream.gzip_flag = is_gzip as _;
+        zstream.stream.gzip_flag = codec as _;
 
         Self {
             inner: writer,
@@ -167,10 +167,10 @@ impl<W: io::Write> io::Write for Encoder<W> {
 /// -------
 /// ```
 /// use std::{io, io::Write};
-/// use isal::igzip::{write::Decoder, CompressionLevel, compress};
+/// use isal::igzip::{write::Decoder, CompressionLevel, compress, Codec};
 /// let data = b"Hello, World!".to_vec();
 ///
-/// let compressed = compress(io::Cursor::new(data.as_slice()), CompressionLevel::Three, true).unwrap();
+/// let compressed = compress(io::Cursor::new(data.as_slice()), CompressionLevel::Three, Codec::Gzip).unwrap();
 ///
 /// let mut decompressed = vec![];
 /// let mut decoder = Decoder::new(&mut decompressed);
@@ -291,7 +291,7 @@ pub mod tests {
         let data = gen_large_data();
 
         let mut compressed = vec![];
-        let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, Codec::Gzip);
         let nbytes = io::copy(&mut io::Cursor::new(&data), &mut encoder).unwrap();
 
         // Footer isn't written until .flush is called
@@ -319,7 +319,7 @@ pub mod tests {
         let second = b"bar";
 
         let mut compressed = vec![];
-        let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, true);
+        let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, Codec::Gzip);
 
         encoder.write_all(first).unwrap();
         encoder.flush().unwrap();
@@ -338,7 +338,8 @@ pub mod tests {
         let data = gen_large_data();
 
         let compressed =
-            crate::igzip::compress(io::Cursor::new(&data), CompressionLevel::Three, true).unwrap();
+            crate::igzip::compress(io::Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)
+                .unwrap();
 
         let mut decompressed = vec![];
         let mut decoder = Decoder::new(&mut decompressed);
@@ -352,11 +353,19 @@ pub mod tests {
         let first = b"foo";
         let second = b"bar";
 
-        let mut compressed =
-            crate::igzip::compress(io::Cursor::new(&first), CompressionLevel::Three, true).unwrap();
+        let mut compressed = crate::igzip::compress(
+            io::Cursor::new(&first),
+            CompressionLevel::Three,
+            Codec::Gzip,
+        )
+        .unwrap();
         compressed.extend(
-            crate::igzip::compress(io::Cursor::new(&second), CompressionLevel::Three, true)
-                .unwrap(),
+            crate::igzip::compress(
+                io::Cursor::new(&second),
+                CompressionLevel::Three,
+                Codec::Gzip,
+            )
+            .unwrap(),
         );
 
         let mut decompressed = vec![];
@@ -374,7 +383,7 @@ pub mod tests {
         // our encoder
         let mut compressed = vec![];
         {
-            let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, true);
+            let mut encoder = Encoder::new(&mut compressed, CompressionLevel::Three, Codec::Gzip);
             io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
             encoder.flush().unwrap();
         }

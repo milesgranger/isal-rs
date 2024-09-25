@@ -11,18 +11,27 @@ use isal_sys::igzip_lib as isal;
 /// Buffer size
 pub const BUF_SIZE: usize = 16 * 1024;
 
+/// Flavor of De/Compression to use if using the `isal::igzip::Encoder/Decoder` directly
+/// and not the thin wrappers like `GzDecoder/GzEncoder` and similar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum Codec {
+    Gzip = isal::IGZIP_GZIP,
+    Deflate = isal::IGZIP_DEFLATE,
+}
+
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
 #[inline(always)]
 pub fn compress_into(
     input: &[u8],
     output: &mut [u8],
     level: CompressionLevel,
-    is_gzip: bool,
+    codec: Codec,
 ) -> Result<usize> {
     let mut zstream = ZStream::new(level, ZStreamKind::Stateless);
 
     zstream.stream.flush = FlushFlags::NoFlush as _;
-    zstream.stream.gzip_flag = is_gzip as _;
+    zstream.stream.gzip_flag = codec as _;
     zstream.stream.end_of_stream = 1;
 
     // read input into buffer
@@ -42,10 +51,10 @@ pub fn compress_into(
 pub fn compress<R: std::io::Read>(
     input: R,
     level: CompressionLevel,
-    is_gzip: bool,
+    codec: Codec,
 ) -> Result<Vec<u8>> {
     let mut out = vec![];
-    let mut encoder = read::Encoder::new(input, level, is_gzip);
+    let mut encoder = read::Encoder::new(input, level, codec);
     io::copy(&mut encoder, &mut out)?;
     Ok(out)
 }
@@ -334,7 +343,12 @@ pub mod tests {
     fn basic_compress_into() -> Result<()> {
         let data = get_data()?;
         let mut output = vec![0_u8; data.len()]; // assume compression isn't worse than input len.
-        let n_bytes = compress_into(data.as_slice(), &mut output, CompressionLevel::Three, true)?;
+        let n_bytes = compress_into(
+            data.as_slice(),
+            &mut output,
+            CompressionLevel::Three,
+            Codec::Gzip,
+        )?;
         println!(
             "n_bytes: {} - {:?}",
             n_bytes,
@@ -346,7 +360,7 @@ pub mod tests {
     #[test]
     fn basic_compress() -> Result<()> {
         let data = get_data()?;
-        let output = compress(Cursor::new(data), CompressionLevel::Three, true)?;
+        let output = compress(Cursor::new(data), CompressionLevel::Three, Codec::Gzip)?;
         println!(
             "n_bytes: {:?}",
             &output[..std::cmp::min(output.len() - 1, 100)]
@@ -384,7 +398,7 @@ pub mod tests {
     fn larger_decompress() -> Result<()> {
         /* Decompress data which is larger than BUF_SIZE */
         let data = get_data()?;
-        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, true)?;
+        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?;
         let decompressed = decompress(Cursor::new(compressed))?;
         assert!(same_same(&data, &decompressed));
         Ok(())
@@ -407,7 +421,7 @@ pub mod tests {
     #[test]
     fn basic_round_trip() -> Result<()> {
         let data = b"hello, world!";
-        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, true)?;
+        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?;
         let decompressed = decompress(Cursor::new(compressed))?;
         assert_eq!(decompressed, data);
         Ok(())
@@ -417,14 +431,15 @@ pub mod tests {
     fn basic_round_trip_into() -> Result<()> {
         let data = b"hello, world!".to_vec();
 
-        let compressed_len = compress(Cursor::new(&data), CompressionLevel::Three, true)?.len();
+        let compressed_len =
+            compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?.len();
         let decompressed_len = data.len();
 
         let mut compressed = vec![0; compressed_len];
         let mut decompressed = vec![0; decompressed_len];
 
         // compress_into
-        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
+        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, Codec::Gzip)?;
         assert_eq!(n_bytes, compressed_len);
 
         // decompress_into
@@ -440,14 +455,15 @@ pub mod tests {
     fn large_round_trip_into() -> Result<()> {
         let data = gen_large_data();
 
-        let compressed_len = compress(Cursor::new(&data), CompressionLevel::Three, true)?.len();
+        let compressed_len =
+            compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?.len();
         let decompressed_len = data.len();
 
         let mut compressed = vec![0; compressed_len];
         let mut decompressed = vec![0; decompressed_len];
 
         // compress_into
-        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, true)?;
+        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, Codec::Gzip)?;
         assert!(n_bytes < data.len());
 
         // decompress_into

@@ -12,6 +12,11 @@ fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
 fn main() {
     let data = get_data().unwrap();
     for _ in 0..1000 {
-        let _v = igzip::compress(Cursor::new(&data), igzip::CompressionLevel::Three, true).unwrap();
+        let _v = igzip::compress(
+            Cursor::new(&data),
+            igzip::CompressionLevel::Three,
+            isal::igzip::Codec::Gzip,
+        )
+        .unwrap();
     }
 }
