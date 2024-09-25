@@ -271,6 +271,7 @@ impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
         // Read out next buf len worth to compress; filling intermediate out_buf
+        debug_assert_eq!(self.zst.0.avail_in, 0);
         self.zst.0.avail_in = buf.len() as _;
         self.zst.0.next_in = buf.as_ptr() as *mut _;
 
@@ -301,7 +302,9 @@ impl<W: io::Write> io::Write for Decoder<W> {
                 let state = self.zst.block_state();
                 match self.codec {
                     Codec::Deflate => {
-                        if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                        if state == isal::isal_block_state_ISAL_BLOCK_FINISH
+                            || state == isal::isal_block_state_ISAL_BLOCK_CODED
+                        {
                             break;
                         }
                     }
@@ -328,7 +331,12 @@ impl<W: io::Write> io::Write for Decoder<W> {
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        loop {
+            if self.write_from_out_buf()? == 0 {
+                break;
+            }
+        }
+        self.inner.flush()
     }
 }
 

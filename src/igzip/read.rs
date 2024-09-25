@@ -238,6 +238,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
             Ok(count)
         } else {
             // Read out next buf len worth to compress; filling intermediate out_buf
+            debug_assert_eq!(self.zst.0.avail_in, 0);
             self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
             self.zst.0.next_in = self.in_buf.as_mut_ptr();
 
@@ -457,11 +458,6 @@ mod tests {
         let mut decoder = DeflateDecoder::new(compressed.as_slice());
         let mut decompressed = vec![];
         io::copy(&mut decoder, &mut decompressed).unwrap();
-
-        println!(
-            "data.len() - decompressed.len() = {}",
-            data.len() - decompressed.len()
-        );
 
         assert_eq!(data.len(), decompressed.len());
         assert!(same_same(&data, &decompressed));
