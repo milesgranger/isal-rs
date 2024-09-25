@@ -286,7 +286,7 @@ pub mod tests {
     use std::io::Write;
 
     fn gen_large_data() -> Vec<u8> {
-        (0..1_000_000)
+        (0..(BUF_SIZE * 2) + 1)
             .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
             .flat_map(|v| v)
             .collect()
