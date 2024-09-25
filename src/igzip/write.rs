@@ -276,7 +276,9 @@ impl<W: io::Write> io::Write for Decoder<W> {
 
         let mut n_bytes = 0;
         while self.zst.0.avail_in > 0 {
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+            if self.codec == Codec::Gzip
+                && self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR
+            {
                 // Read this member's gzip header
                 let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
                     mem::MaybeUninit::uninit();
@@ -297,12 +299,21 @@ impl<W: io::Write> io::Write for Decoder<W> {
                 n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
 
                 let state = self.zst.block_state();
-                if state == isal::isal_block_state_ISAL_BLOCK_CODED
-                    || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
-                    || state == isal::isal_block_state_ISAL_BLOCK_HDR
-                    || state == isal::isal_block_state_ISAL_BLOCK_FINISH
-                {
-                    break;
+                match self.codec {
+                    Codec::Deflate => {
+                        if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                            break;
+                        }
+                    }
+                    Codec::Gzip => {
+                        if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                            || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
+                            || state == isal::isal_block_state_ISAL_BLOCK_HDR
+                            || state == isal::isal_block_state_ISAL_BLOCK_FINISH
+                        {
+                            break;
+                        }
+                    }
                 }
             }
             if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
