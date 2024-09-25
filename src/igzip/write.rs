@@ -302,6 +302,8 @@ impl<W: io::Write> io::Write for Decoder<W> {
                 let state = self.zst.block_state();
                 match self.codec {
                     Codec::Deflate => {
+                        // On block finished we're done done w/ the block,
+                        // on block coded, we need to move onto the next input buffer
                         if state == isal::isal_block_state_ISAL_BLOCK_FINISH
                             || state == isal::isal_block_state_ISAL_BLOCK_CODED
                         {
