@@ -346,4 +346,39 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn flate2_gzip_compat_encoder_out() {
+        let data = gen_large_data();
+
+        // our encoder
+        let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, true);
+        let mut compressed = vec![];
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        // their decoder
+        let mut decoder = flate2::read::GzDecoder::new(compressed.as_slice());
+        let mut decompressed = vec![];
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(&data, &decompressed);
+    }
+
+    #[test]
+    fn flate2_gzip_compat_decoder_out() {
+        let data = gen_large_data();
+
+        // their encoder
+        let mut encoder =
+            flate2::read::GzEncoder::new(data.as_slice(), flate2::Compression::fast());
+        let mut compressed = vec![];
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        // our decoder
+        let mut decoder = Decoder::new(compressed.as_slice());
+        let mut decompressed = vec![];
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(&data, &decompressed);
+    }
 }
