@@ -41,6 +41,84 @@ impl<R: io::Read> io::Read for DeflateDecoder<R> {
         self.inner.read(buf)
     }
 }
+/// Zlib decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct ZlibEncoder<R: io::Read> {
+    inner: Encoder<R>,
+}
+
+impl<R: io::Read> ZlibEncoder<R> {
+    pub fn new(reader: R, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(reader, level, Codec::Zlib),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for ZlibEncoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Zlib decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct ZlibDecoder<R: io::Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: io::Read> ZlibDecoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            inner: Decoder::new(reader, Codec::Zlib),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for ZlibDecoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+/// Gzip decompression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct GzipEncoder<R: io::Read> {
+    inner: Encoder<R>,
+}
+
+impl<R: io::Read> GzipEncoder<R> {
+    pub fn new(reader: R, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(reader, level, Codec::Gzip),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for GzipEncoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+/// Gzip decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct GzipDecoder<R: io::Read> {
+    inner: Decoder<R>,
+}
+
+impl<R: io::Read> GzipDecoder<R> {
+    pub fn new(reader: R) -> Self {
+        Self {
+            inner: Decoder::new(reader, Codec::Gzip),
+        }
+    }
+}
+
+impl<R: io::Read> io::Read for GzipDecoder<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
 
 /// Streaming compression for input streams implementing `std::io::Read`.
 ///

@@ -49,6 +49,98 @@ impl<W: io::Write> io::Write for DeflateDecoder<W> {
     }
 }
 
+/// Zlib compression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct ZlibEncoder<R: io::Write> {
+    inner: Encoder<R>,
+}
+
+impl<W: io::Write> ZlibEncoder<W> {
+    pub fn new(writer: W, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(writer, level, Codec::Zlib),
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for ZlibEncoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// Zlib decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct ZlibDecoder<W: io::Write> {
+    inner: Decoder<W>,
+}
+
+impl<W: io::Write> ZlibDecoder<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            inner: Decoder::new(writer, Codec::Zlib),
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for ZlibDecoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// Gzip compression
+/// Basically a wrapper to `Encoder` which sets the codec for you.
+pub struct GzipEncoder<R: io::Write> {
+    inner: Encoder<R>,
+}
+
+impl<W: io::Write> GzipEncoder<W> {
+    pub fn new(writer: W, level: CompressionLevel) -> Self {
+        Self {
+            inner: Encoder::new(writer, level, Codec::Gzip),
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for GzipEncoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// Gzip decompression
+/// Basically a wrapper to `Decoder` which sets the codec for you.
+pub struct GzipDecoder<W: io::Write> {
+    inner: Decoder<W>,
+}
+
+impl<W: io::Write> GzipDecoder<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            inner: Decoder::new(writer, Codec::Gzip),
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for GzipDecoder<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 /// Streaming compression for input streams implementing `std::io::Write`.
 ///
 /// Notes
