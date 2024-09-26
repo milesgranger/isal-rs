@@ -3,8 +3,13 @@ name = "isal-rs"
 version = "0.4.0+496255c"
 edition = "2021"
 description = "isa-l Rust bindings"
-license = "MIT"
 readme = "README.md"
+license = "MIT AND BSD-3-Clause"
+authors = ["Miles Granger <miles59923@gmail.com>"]
+documentation = "https://docs.rs/isal-rs"
+homepage = "https://github.com/milesgranger/isal-rs"
+repository = "https://github.com/milesgranger/isal-rs"
+keywords = ["isal", "isa-l", "igzip", "gzip", "deflate", "zlib", "compression", "decompression"]
 
 [lib]
 name = "isal"
