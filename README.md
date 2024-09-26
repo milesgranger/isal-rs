@@ -21,7 +21,7 @@ Supports the following codecs using the ISA-L library under the hood:
   - `isal::igzip::read::ZlibEncoder/ZlibDecoder`
   - `isal::igzip::write::ZlibEncoder/ZlibDecoder`
   - TODO:
-    - [] Support an 'unsafe' setting where one can ignore step of verifying Adler32 checksum.
+    - [ ] Support an 'unsafe' setting where one can ignore step of verifying Adler32 checksum.
 
 Or can use functions of `de/compress` and `de/compress_into`
 
