@@ -19,11 +19,11 @@ use std::io;
 /// let mut encoder = Encoder::new(data.as_slice(), CompressionLevel::Three, Codec::Gzip);
 /// let mut compressed = vec![];
 ///
-/// // Numbeer of compressed bytes written to `output`
+/// // Number of compressed bytes written to `output`
 /// let n = io::copy(&mut encoder, &mut compressed).unwrap();
 /// assert_eq!(n as usize, compressed.len());
 ///
-/// let decompressed = decompress(io::Cursor::new(compressed), Codec::Gzip).unwrap();
+/// let decompressed = decompress(compressed.as_slice(), Codec::Gzip).unwrap();
 /// assert_eq!(decompressed.as_slice(), data);
 /// ```
 pub struct Encoder<R: io::Read> {

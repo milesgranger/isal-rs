@@ -22,6 +22,19 @@ pub enum Codec {
 }
 
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
+///
+/// Example
+/// -------
+/// ```
+/// use isal::igzip::{CompressionLevel, Codec, compress_into, decompress};
+///
+/// let mut compressed = vec![0u8; 100];
+/// let nbytes = compress_into(b"foobar", &mut compressed, CompressionLevel::Three, Codec::Gzip).unwrap();
+///
+/// let decompressed = decompress(&compressed[..nbytes], Codec::Gzip).unwrap();
+/// assert_eq!(decompressed.as_slice(), b"foobar");
+///
+/// ```
 #[inline(always)]
 pub fn compress_into(
     input: &[u8],
