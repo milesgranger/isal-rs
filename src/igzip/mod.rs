@@ -18,9 +18,23 @@ pub const BUF_SIZE: usize = 16 * 1024;
 pub enum Codec {
     Gzip = isal::IGZIP_GZIP,
     Deflate = isal::IGZIP_DEFLATE,
+    Zlib = isal::IGZIP_ZLIB,
 }
 
 /// Compress `input` directly into `output`. This is the fastest possible compression available.
+///
+/// Example
+/// -------
+/// ```
+/// use isal::igzip::{CompressionLevel, Codec, compress_into, decompress};
+///
+/// let mut compressed = vec![0u8; 100];
+/// let nbytes = compress_into(b"foobar", &mut compressed, CompressionLevel::Three, Codec::Gzip).unwrap();
+///
+/// let decompressed = decompress(&compressed[..nbytes], Codec::Gzip).unwrap();
+/// assert_eq!(decompressed.as_slice(), b"foobar");
+///
+/// ```
 #[inline(always)]
 pub fn compress_into(
     input: &[u8],
@@ -61,25 +75,49 @@ pub fn compress<R: std::io::Read>(
 
 /// Decompress
 #[inline(always)]
-pub fn decompress<R: std::io::Read>(input: R) -> Result<Vec<u8>> {
+pub fn decompress<R: std::io::Read>(input: R, codec: Codec) -> Result<Vec<u8>> {
     let mut out = vec![];
-    let mut decoder = read::Decoder::new(input, Codec::Gzip);
+    let mut decoder = read::Decoder::new(input, codec);
     io::copy(&mut decoder, &mut out)?;
     Ok(out)
 }
 
 /// Decompress `input` into `output`, returning number of bytes written to output.
 #[inline(always)]
-pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize> {
+pub fn decompress_into(input: &[u8], output: &mut [u8], codec: Codec) -> Result<usize> {
     let mut zst = InflateState::new();
     zst.0.avail_in = input.len() as _;
     zst.0.next_in = input.as_ptr() as *mut _;
-    zst.0.crc_flag = 1;
+
+    zst.0.crc_flag = codec as _;
 
     zst.0.avail_out = output.len() as _;
     zst.0.next_out = output.as_mut_ptr();
 
+    if codec == Codec::Zlib {
+        zst.0.crc_flag = 0; // zlib uses adler-32 checksum
+
+        let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> = mem::MaybeUninit::uninit();
+        unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
+        let mut hdr = unsafe { hdr.assume_init() };
+        read_zlib_header(&mut zst.0, &mut hdr)?;
+        zst.0.next_in = input[2..].as_ptr() as *mut _; // skip header now that it's read
+        zst.0.avail_in -= 4; // adler-32 checksum
+    }
+
     zst.inflate_stateless()?;
+
+    if codec == Codec::Zlib {
+        let decompressed = &output[..zst.0.total_out as _];
+        let c_adler32 =
+            unsafe { isal::isal_adler32(1, decompressed.as_ptr(), decompressed.len() as _) };
+        let bytes: [u8; 4] = (&input[input.len() - 4..]).try_into().unwrap();
+        let e_adler32 = u32::from_be_bytes(bytes);
+        if c_adler32 != e_adler32 {
+            // panic!("Computed adler: {}, expected: {}", c_adler32, e_adler32);
+            return Err(Error::DecompressionError(DecompCode::IncorrectChecksum));
+        }
+    }
 
     Ok(zst.0.total_out as _)
 }
@@ -310,6 +348,17 @@ pub fn read_gzip_header(
         r => Err(Error::DecompressionError(r)),
     }
 }
+#[inline(always)]
+pub fn read_zlib_header(
+    zst: &mut isal::inflate_state,
+    gz_hdr: &mut isal::isal_zlib_header,
+) -> Result<()> {
+    let ret = unsafe { isal::isal_read_zlib_header(zst as *mut _, gz_hdr as *mut _) };
+    match DecompCode::try_from(ret)? {
+        DecompCode::DecompOk => Ok(()),
+        r => Err(Error::DecompressionError(r)),
+    }
+}
 
 #[cfg(test)]
 pub mod tests {
@@ -375,7 +424,7 @@ pub mod tests {
             31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
             73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
         ];
-        let decompressed = decompress(Cursor::new(compressed))?;
+        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
         assert_eq!(decompressed, b"hello, world!");
         Ok(())
     }
@@ -388,7 +437,7 @@ pub mod tests {
             73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
         ];
         let mut decompressed = b"world!, hello".to_vec(); // same len, wrong data
-        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        let n_bytes = decompress_into(&compressed, &mut decompressed, Codec::Gzip)?;
         assert_eq!(n_bytes, decompressed.len());
         assert_eq!(&decompressed, b"hello, world!");
         Ok(())
@@ -399,7 +448,7 @@ pub mod tests {
         /* Decompress data which is larger than BUF_SIZE */
         let data = get_data()?;
         let compressed = compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?;
-        let decompressed = decompress(Cursor::new(compressed))?;
+        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
         assert!(same_same(&data, &decompressed));
         Ok(())
     }
@@ -413,7 +462,7 @@ pub mod tests {
         ];
         compressed.extend(compressed.clone());
 
-        let decompressed = decompress(Cursor::new(compressed))?;
+        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
     }
@@ -422,7 +471,7 @@ pub mod tests {
     fn basic_round_trip() -> Result<()> {
         let data = b"hello, world!";
         let compressed = compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?;
-        let decompressed = decompress(Cursor::new(compressed))?;
+        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
         assert_eq!(decompressed, data);
         Ok(())
     }
@@ -443,7 +492,7 @@ pub mod tests {
         assert_eq!(n_bytes, compressed_len);
 
         // decompress_into
-        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        let n_bytes = decompress_into(&compressed, &mut decompressed, Codec::Gzip)?;
         assert_eq!(n_bytes, decompressed_len);
 
         // round trip output matches original input
@@ -467,11 +516,69 @@ pub mod tests {
         assert!(n_bytes < data.len());
 
         // decompress_into
-        let n_bytes = decompress_into(&compressed, &mut decompressed)?;
+        let n_bytes = decompress_into(&compressed, &mut decompressed, Codec::Gzip)?;
         assert_eq!(n_bytes, decompressed_len);
 
         // round trip output matches original input
         assert!(same_same(&data, &decompressed));
         Ok(())
+    }
+
+    #[test]
+    fn flate2_zlib_compat_compress_into() {
+        let data = b"foobar";
+
+        let mut compressed = vec![0u8; 100];
+        let n = compress_into(
+            data.as_slice(),
+            &mut compressed,
+            CompressionLevel::One,
+            Codec::Zlib,
+        )
+        .unwrap();
+
+        let mut decompressed = vec![];
+        let mut decoder = flate2::read::ZlibDecoder::new(&compressed[..n]);
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(data, decompressed.as_slice());
+    }
+    #[test]
+    fn flate2_zlib_compat_compress() {
+        let data = b"foobar";
+
+        let compressed = compress(data.as_slice(), CompressionLevel::One, Codec::Zlib).unwrap();
+
+        let mut decompressed = vec![];
+        let mut decoder = flate2::read::ZlibDecoder::new(compressed.as_slice());
+        io::copy(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(data, decompressed.as_slice());
+    }
+    #[test]
+    fn flate2_zlib_compat_decompress() {
+        let data = b"foobar";
+
+        let mut compressed = vec![];
+        let mut encoder =
+            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        let decompressed = decompress(compressed.as_slice(), Codec::Zlib).unwrap();
+        assert_eq!(data, decompressed.as_slice());
+    }
+    #[test]
+    fn flate2_zlib_compat_decompress_into() {
+        let data = b"foobar";
+
+        let mut compressed = vec![];
+        let mut encoder =
+            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
+        io::copy(&mut encoder, &mut compressed).unwrap();
+
+        let mut decompressed = vec![0u8; data.len()];
+        let n = decompress_into(compressed.as_slice(), &mut decompressed, Codec::Zlib).unwrap();
+        assert_eq!(n, data.len());
+        assert_eq!(data, decompressed.as_slice());
     }
 }
