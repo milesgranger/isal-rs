@@ -1,6 +1,6 @@
 [package]
 name = "isal-rs"
-version = "0.3.1+496255c"
+version = "0.4.0+496255c"
 edition = "2021"
 description = "isa-l Rust bindings"
 license = "MIT"
@@ -17,7 +17,7 @@ use-system-isal = ["isal-sys/use-system-isal"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-isal-sys = { path = "isal-sys", version = "0.3.1+496255c" }
+isal-sys = { path = "isal-sys", version = "0.4.0+496255c" }
 
 [dev-dependencies]
 criterion = "0.3"

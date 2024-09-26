@@ -1,6 +1,6 @@
 [package]
 name = "isal-sys"
-version = "0.3.1+496255c"
+version = "0.4.0+496255c"
 edition = "2021"
 description = "isa-l sys crate"
 license = "MIT"
