@@ -30,19 +30,14 @@ pub struct Encoder<R: io::Read> {
     inner: R,
     stream: ZStream,
     in_buf: [u8; BUF_SIZE],
-    out_buf: Vec<u8>,
-    dsts: usize,
-    dste: usize,
 }
 
 impl<R: io::Read> Encoder<R> {
     /// Create a new `Encoder` which implements the `std::io::Read` trait.
     pub fn new(reader: R, level: CompressionLevel, codec: Codec) -> Encoder<R> {
         let in_buf = [0_u8; BUF_SIZE];
-        let out_buf = Vec::with_capacity(BUF_SIZE);
 
         let mut zstream = ZStream::new(level, ZStreamKind::Stateful);
-
         zstream.stream.end_of_stream = 0;
         zstream.stream.flush = FlushFlags::SyncFlush as _;
         zstream.stream.gzip_flag = codec as _;
@@ -51,9 +46,6 @@ impl<R: io::Read> Encoder<R> {
             inner: reader,
             stream: zstream,
             in_buf,
-            out_buf,
-            dste: 0,
-            dsts: 0,
         }
     }
 
@@ -66,55 +58,29 @@ impl<R: io::Read> Encoder<R> {
     pub fn get_ref(&self) -> &R {
         &self.inner
     }
-
-    // Read data from intermediate output buffer holding compressed output.
-    // It's unknown if the output from igzip will fit into buffer passed during read
-    // so we hold it here and empty as read calls pass.
-    // thanks to: https://github.com/BurntSushi/rust-snappy/blob/f9eb8d49c713adc48732fb95682a201a7b74d39a/src/read.rs#L327
-    #[inline(always)]
-    fn read_from_out_buf(&mut self, buf: &mut [u8]) -> usize {
-        let available_bytes = self.dste - self.dsts;
-        let count = std::cmp::min(available_bytes, buf.len());
-        buf[..count].copy_from_slice(&self.out_buf[self.dsts..self.dsts + count]);
-        self.dsts += count;
-        count
-    }
 }
 
 impl<R: io::Read> io::Read for Encoder<R> {
+    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
-        let count = self.read_from_out_buf(buf);
-        if count > 0 {
-            Ok(count)
-        } else if self.stream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
-            // Read out next buf len worth to compress; filling intermediate out_buf
-            self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
-            if self.stream.stream.avail_in < self.in_buf.len() as _ {
-                self.stream.stream.end_of_stream = 1;
+        if self.stream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
+            if self.stream.stream.avail_in == 0 {
+                // Read out next buf len worth to compress; filling intermediate out_buf
+                self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+                self.stream.stream.end_of_stream =
+                    (self.stream.stream.avail_in < self.in_buf.len() as _) as _;
             }
-            self.stream.stream.next_in = self.in_buf.as_mut_ptr();
-
-            let mut n_bytes = 0;
-            self.out_buf.truncate(0);
 
             // compress this chunk into out_buf
-            while self.stream.stream.avail_in > 0 {
-                self.out_buf.resize(self.out_buf.len() + BUF_SIZE, 0);
+            self.stream.stream.avail_out = buf.len() as _;
+            self.stream.stream.next_out = buf.as_mut_ptr();
 
-                self.stream.stream.avail_out = BUF_SIZE as _;
-                self.stream.stream.next_out =
-                    self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+            self.stream.deflate()?;
 
-                self.stream.deflate()?;
-
-                n_bytes += BUF_SIZE - self.stream.stream.avail_out as usize;
-            }
-            self.out_buf.truncate(n_bytes);
-            self.dste = n_bytes;
-            self.dsts = 0;
-
-            Ok(self.read_from_out_buf(buf))
+            let nbytes = buf.len() - self.stream.stream.avail_out as usize;
+            Ok(nbytes)
         } else {
             Ok(0)
         }
