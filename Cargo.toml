@@ -28,6 +28,7 @@ isal-sys = { path = "isal-sys", version = "0.4.0+496255c" }
 criterion = "0.3"
 md5 = "0.7.0"
 flate2 = "^1"
+rand = "0.8.5"
 
 [[bench]]
 name = "igzip"
