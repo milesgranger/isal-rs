@@ -104,6 +104,7 @@ impl<W: io::Write> Encoder<W> {
 }
 
 impl<W: io::Write> io::Write for Encoder<W> {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.is_empty() {
             return Ok(0);
