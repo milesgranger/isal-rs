@@ -38,29 +38,26 @@ fn get_data() -> [&'static [u8]; 6] {
 }
 
 fn gzip_read_encoder(c: &mut Criterion) {
-    let datas = get_data();
-    c.bench_function("igzip::read::GzipEncoder", |b| {
-        b.iter(|| {
-            for data in datas {
+    for (i, data) in get_data().into_iter().enumerate() {
+        let name = format!("igzip::read::GzipEncoder ({})", i);
+        c.bench_function(&name, |b| {
+            b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
                     igzip::read::GzipEncoder::new(data, igzip::CompressionLevel::Three);
                 let _ = io::copy(&mut encoder, &mut output).unwrap();
-            }
-        })
-    });
-}
-fn flate2_gzip_read_encoder(c: &mut Criterion) {
-    let datas = get_data();
-    c.bench_function("flate2::read::GzEncoder", |b| {
-        b.iter(|| {
-            for data in datas {
+            })
+        });
+
+        let name = format!("flate2::read::GzEncoder ({})", i);
+        c.bench_function(&name, |b| {
+            b.iter(|| {
                 let mut output = vec![];
                 let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
                 let _ = io::copy(&mut encoder, &mut output).unwrap();
-            }
-        })
-    });
+            })
+        });
+    }
 }
 
 fn gzip_write_encoder(c: &mut Criterion) {
@@ -92,10 +89,9 @@ fn flate2_gzip_write_encoder(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(10);
+    config = Criterion::default().sample_size(50);
     targets =
         gzip_read_encoder,
-        flate2_gzip_read_encoder,
         gzip_write_encoder,
         flate2_gzip_write_encoder
 }
