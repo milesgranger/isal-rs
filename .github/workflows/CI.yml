@@ -97,9 +97,9 @@ jobs:
         run: brew install automake autoconf coreutils libtool nasm
 
       - name: Test (shared)
-        run: cargo test --no-default-features --features shared --lib --release -vv
+        run: cargo test --no-default-features --features shared --lib -vv
 
       - name: Test (static)
         run: |
           cargo clean  # ensure we're starting fresh, no funny business
-          cargo test --no-default-features --features static --release -vv
+          cargo test --no-default-features --features static -vv
