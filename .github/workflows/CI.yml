@@ -25,14 +25,17 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Remove benches/
+        run: rm -rf benches/
+
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross --rev 6d097fb
 
       - name: Build
-        run: cross build --target ${{ matrix.target }} --release -vv
+        run: cross build --target ${{ matrix.target }} -vv
 
       - name: Test
-        run: cross test --target ${{ matrix.target }} --release -vv
+        run: cross test --target ${{ matrix.target }} -vv
 
   test-wasm32-emscripten:
     runs-on: ubuntu-latest
@@ -77,6 +80,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Remove benches/
+        shell: bash
+        run: rm -rf benches/
+
       - name: Install nasm
         if: runner.os != 'macOS'
         uses: ilammy/setup-nasm@v1
@@ -90,9 +97,9 @@ jobs:
         run: brew install automake autoconf coreutils libtool nasm
 
       - name: Test (shared)
-        run: cargo test --no-default-features --features shared --lib --release -vv
+        run: cargo test --no-default-features --features shared --lib -vv
 
       - name: Test (static)
         run: |
           cargo clean  # ensure we're starting fresh, no funny business
-          cargo test --no-default-features --features static --release -vv
+          cargo test --no-default-features --features static -vv
