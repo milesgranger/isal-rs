@@ -92,6 +92,8 @@ assert_eq!(decompressed.as_slice(), data);
 
 Checkout the [README](./benches/README.md) in the benches directory.
 
+Criterion benchmark report available here: https://milesgranger.github.io/isal-rs/benches/criterion/report/
+
 ---
 
 ### Versioning: 
