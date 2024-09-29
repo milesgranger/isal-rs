@@ -25,6 +25,13 @@ Supports the following codecs using the ISA-L library under the hood:
 
 Or can use functions of `de/compress` and `de/compress_into`
 
+---
+
+Building requires some system tools like `autotools`, `nasm`, `make`, and anything the official ISA-L repo suggests. 
+On Windows the build is invoked with `nmake`, other systems use the `./autogen.sh` and `./configure` setups.
+
+---
+
 ### Examples:
 
 #### Functions like `compress_into` and `decompress`
@@ -78,6 +85,12 @@ assert_eq!(n as usize, compressed.len());
 
 assert_eq!(decompressed.as_slice(), data);
 ```
+
+---
+
+### Benchmarks
+
+Checkout the [README](./benches/README.md) in the benches directory.
 
 ---
 
