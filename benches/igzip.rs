@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use isal::igzip;
 use std::{
     collections::HashMap,
@@ -45,8 +45,9 @@ fn get_data() -> HashMap<&'static str, &'static [u8]> {
 
 fn read_encoder(c: &mut Criterion) {
     for (i, data) in get_data().into_iter() {
-        let name = format!("igzip::read::GzipEncoder ({})", i);
-        c.bench_function(&name, |b| {
+        let mut group = c.benchmark_group("io::Read Gzip Encoder");
+
+        group.bench_with_input(BenchmarkId::new("isal", i), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
@@ -54,22 +55,22 @@ fn read_encoder(c: &mut Criterion) {
                 let _ = io::copy(&mut encoder, &mut output).unwrap();
             })
         });
-
-        let name = format!("flate2::read::GzEncoder ({})", i);
-        c.bench_function(&name, |b| {
+        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
                 let _ = io::copy(&mut encoder, &mut output).unwrap();
             })
         });
+        group.finish()
     }
 }
 
 fn write_encoder(c: &mut Criterion) {
     for (i, data) in get_data() {
-        let name = format!("igzip::write::GzipEncoder ({})", i);
-        c.bench_function(&name, |b| {
+        let mut group = c.benchmark_group("io::Write Grzip Encoder");
+
+        group.bench_with_input(BenchmarkId::new("isal", i), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
@@ -77,9 +78,7 @@ fn write_encoder(c: &mut Criterion) {
                 let _ = io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
             })
         });
-
-        let name = format!("flate2::write::GzEncoder ({})", i);
-        c.bench_function(&name, |b| {
+        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
@@ -87,6 +86,7 @@ fn write_encoder(c: &mut Criterion) {
                 let _ = io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
             })
         });
+        group.finish()
     }
 }
 
