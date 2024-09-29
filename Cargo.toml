@@ -35,5 +35,4 @@ rand = "0.8.5"
 name = "igzip"
 path = "benches/igzip.rs"
 harness = false
-html = true
 
