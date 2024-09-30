@@ -278,6 +278,15 @@ impl<R: io::Read> DeflateEncoder<R> {
             inner: Encoder::new(reader, level, Codec::Deflate),
         }
     }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut R {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &R {
+        &self.inner.inner
+    }
 }
 
 impl<R: io::Read> io::Read for DeflateEncoder<R> {
@@ -298,6 +307,15 @@ impl<R: io::Read> DeflateDecoder<R> {
             inner: Decoder::new(reader, Codec::Deflate),
         }
     }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut R {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &R {
+        &self.inner.inner
+    }
 }
 
 impl<R: io::Read> io::Read for DeflateDecoder<R> {
@@ -316,6 +334,15 @@ impl<R: io::Read> ZlibEncoder<R> {
         Self {
             inner: Encoder::new(reader, level, Codec::Zlib),
         }
+    }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut R {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &R {
+        &self.inner.inner
     }
 }
 
@@ -337,6 +364,15 @@ impl<R: io::Read> ZlibDecoder<R> {
             inner: Decoder::new(reader, Codec::Zlib),
         }
     }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut R {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &R {
+        &self.inner.inner
+    }
 }
 
 impl<R: io::Read> io::Read for ZlibDecoder<R> {
@@ -355,6 +391,15 @@ impl<R: io::Read> GzipEncoder<R> {
         Self {
             inner: Encoder::new(reader, level, Codec::Gzip),
         }
+    }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut R {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &R {
+        &self.inner.inner
     }
 }
 
@@ -375,6 +420,15 @@ impl<R: io::Read> GzipDecoder<R> {
         Self {
             inner: Decoder::new(reader, Codec::Gzip),
         }
+    }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut R {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &R {
+        &self.inner.inner
     }
 }
 

@@ -75,17 +75,6 @@ impl<W: io::Write> Encoder<W> {
         &self.inner
     }
 
-    #[inline(always)]
-    fn write_from_out_buf(&mut self) -> io::Result<usize> {
-        let count = self.dste - self.dsts;
-        self.inner
-            .write_all(&mut self.out_buf[self.dsts..self.dste])?;
-        self.out_buf.truncate(0);
-        self.dsts = 0;
-        self.dste = 0;
-        Ok(count)
-    }
-
     /// Call flush and return the inner writer
     pub fn finish(mut self) -> io::Result<W> {
         self.flush()?;
@@ -100,6 +89,17 @@ impl<W: io::Write> Encoder<W> {
     /// total bytes processed, inclusive of all streams if `flush` has been called before
     pub fn total_in(&self) -> usize {
         self.stream.stream.total_in as usize + self.total_in
+    }
+
+    #[inline(always)]
+    fn write_from_out_buf(&mut self) -> io::Result<usize> {
+        let count = self.dste - self.dsts;
+        self.inner
+            .write_all(&mut self.out_buf[self.dsts..self.dste])?;
+        self.out_buf.truncate(0);
+        self.dsts = 0;
+        self.dste = 0;
+        Ok(count)
     }
 }
 
@@ -348,6 +348,31 @@ impl<W: io::Write> DeflateEncoder<W> {
             inner: Encoder::new(writer, level, Codec::Deflate),
         }
     }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut W {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &W {
+        &self.inner.inner
+    }
+
+    /// Call flush and return the inner writer
+    pub fn finish(mut self) -> io::Result<W> {
+        self.flush()?;
+        Ok(self.inner.inner)
+    }
+
+    /// total bytes written to the writer, inclusive of all streams if `flush` has been called before
+    pub fn total_out(&self) -> usize {
+        self.inner.stream.stream.total_out as usize + self.inner.total_out
+    }
+
+    /// total bytes processed, inclusive of all streams if `flush` has been called before
+    pub fn total_in(&self) -> usize {
+        self.inner.stream.stream.total_in as usize + self.inner.total_in
+    }
 }
 
 impl<W: io::Write> io::Write for DeflateEncoder<W> {
@@ -370,6 +395,15 @@ impl<W: io::Write> DeflateDecoder<W> {
         Self {
             inner: Decoder::new(writer, Codec::Deflate),
         }
+    }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut W {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &W {
+        &self.inner.inner
     }
 }
 
@@ -394,6 +428,31 @@ impl<W: io::Write> ZlibEncoder<W> {
             inner: Encoder::new(writer, level, Codec::Zlib),
         }
     }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut W {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &W {
+        &self.inner.inner
+    }
+
+    /// Call flush and return the inner writer
+    pub fn finish(mut self) -> io::Result<W> {
+        self.flush()?;
+        Ok(self.inner.inner)
+    }
+
+    /// total bytes written to the writer, inclusive of all streams if `flush` has been called before
+    pub fn total_out(&self) -> usize {
+        self.inner.stream.stream.total_out as usize + self.inner.total_out
+    }
+
+    /// total bytes processed, inclusive of all streams if `flush` has been called before
+    pub fn total_in(&self) -> usize {
+        self.inner.stream.stream.total_in as usize + self.inner.total_in
+    }
 }
 
 impl<W: io::Write> io::Write for ZlibEncoder<W> {
@@ -416,6 +475,15 @@ impl<W: io::Write> ZlibDecoder<W> {
         Self {
             inner: Decoder::new(writer, Codec::Zlib),
         }
+    }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut W {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &W {
+        &self.inner.inner
     }
 }
 
@@ -440,6 +508,31 @@ impl<W: io::Write> GzipEncoder<W> {
             inner: Encoder::new(writer, level, Codec::Gzip),
         }
     }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut W {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &W {
+        &self.inner.inner
+    }
+
+    /// Call flush and return the inner writer
+    pub fn finish(mut self) -> io::Result<W> {
+        self.flush()?;
+        Ok(self.inner.inner)
+    }
+
+    /// total bytes written to the writer, inclusive of all streams if `flush` has been called before
+    pub fn total_out(&self) -> usize {
+        self.inner.stream.stream.total_out as usize + self.inner.total_out
+    }
+
+    /// total bytes processed, inclusive of all streams if `flush` has been called before
+    pub fn total_in(&self) -> usize {
+        self.inner.stream.stream.total_in as usize + self.inner.total_in
+    }
 }
 
 impl<W: io::Write> io::Write for GzipEncoder<W> {
@@ -462,6 +555,15 @@ impl<W: io::Write> GzipDecoder<W> {
         Self {
             inner: Decoder::new(writer, Codec::Gzip),
         }
+    }
+    /// Mutable reference to underlying reader, not advisable to modify during reading.
+    pub fn get_ref_mut(&mut self) -> &mut W {
+        &mut self.inner.inner
+    }
+
+    // Reference to underlying reader
+    pub fn get_ref(&self) -> &W {
+        &self.inner.inner
     }
 }
 
