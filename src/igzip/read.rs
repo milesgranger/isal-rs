@@ -64,26 +64,25 @@ impl<R: io::Read> io::Read for Encoder<R> {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
-        if self.stream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END {
-            if self.stream.stream.avail_in == 0 {
-                // Read out next buf len worth to compress; filling intermediate out_buf
-                self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
-                self.stream.stream.next_in = self.in_buf.as_mut_ptr();
-                self.stream.stream.end_of_stream =
-                    (self.stream.stream.avail_in < self.in_buf.len() as _) as _;
-            }
-
-            // compress this chunk into out_buf
-            self.stream.stream.avail_out = buf.len() as _;
-            self.stream.stream.next_out = buf.as_mut_ptr();
-
-            self.stream.deflate()?;
-
-            let nbytes = buf.len() - self.stream.stream.avail_out as usize;
-            Ok(nbytes)
-        } else {
-            Ok(0)
+        if self.stream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END
+            && (self.stream.stream.avail_in == 0
+                || self.stream.stream.internal_state.state
+                    != isal::isal_zstate_state_ZSTATE_TMP_FLUSH_ICF_BUFFER)
+        {
+            // Read out next buf len worth to compress; filling intermediate out_buf
+            self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+            self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+            self.stream.stream.end_of_stream =
+                (self.stream.stream.avail_in < self.in_buf.len() as _) as _;
         }
+
+        self.stream.stream.avail_out = buf.len() as _;
+        self.stream.stream.next_out = buf.as_mut_ptr();
+
+        self.stream.deflate()?;
+
+        let nbytes = buf.len() - self.stream.stream.avail_out as usize;
+        Ok(nbytes)
     }
 }
 
