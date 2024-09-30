@@ -365,7 +365,6 @@ pub mod tests {
 
     use io::Cursor;
     use md5;
-    use std::fs;
 
     use super::*;
 
@@ -376,82 +375,117 @@ pub mod tests {
             .flat_map(|v| v)
             .collect()
     }
+    pub fn get_small_data() -> Vec<u8> {
+        b"foobar".to_vec()
+    }
 
     pub fn same_same(a: &[u8], b: &[u8]) -> bool {
         md5::compute(a) == md5::compute(b)
     }
 
-    fn get_data() -> std::result::Result<Vec<u8>, std::io::Error> {
-        fs::read(format!(
-            "{}/test-data/fireworks.jpeg",
-            env!("CARGO_MANIFEST_DIR")
-        ))
+    macro_rules! test_codec {
+        ($codec_str:ident, $codec:expr) => {
+            mod $codec_str {
+                use super::*;
+
+                macro_rules! test_compression_level {
+                    ($lvl_name:ident, $lvl:expr) => {
+                        mod $lvl_name {
+                            use super::*;
+
+                            macro_rules! test_data_size {
+                                ($size:ident) => {
+                                    mod $size {
+                                        use super::*;
+
+                                        #[test]
+                                        fn basic_compress_into() {
+                                            let data = $size();
+                                            let mut output = vec![0_u8; data.len() + 50];
+                                            let _nbytes = compress_into(
+                                                data.as_slice(),
+                                                &mut output,
+                                                $lvl,
+                                                $codec,
+                                            )
+                                            .unwrap();
+                                        }
+                                        #[test]
+                                        fn basic_compress() {
+                                            let data = $size();
+                                            let _compressed =
+                                                compress(data.as_slice(), $lvl, $codec).unwrap();
+                                        }
+                                        #[test]
+                                        fn basic_decompress() {
+                                            /* Decompress data which is larger than BUF_SIZE */
+                                            let data = $size();
+                                            let compressed =
+                                                compress(data.as_slice(), $lvl, $codec).unwrap();
+                                            let decompressed =
+                                                decompress(compressed.as_slice(), $codec).unwrap();
+                                            assert!(same_same(&data, &decompressed));
+                                        }
+                                        #[test]
+                                        fn basic_round_trip() {
+                                            let data = b"hello, world!";
+                                            let compressed =
+                                                compress(data.as_slice(), $lvl, $codec).unwrap();
+                                            let decompressed =
+                                                decompress(compressed.as_slice(), $codec).unwrap();
+                                            assert!(same_same(&decompressed, data));
+                                        }
+                                        #[test]
+                                        fn basic_round_trip_into() {
+                                            let data = $size();
+
+                                            let compressed_len =
+                                                compress(data.as_slice(), $lvl, $codec)
+                                                    .unwrap()
+                                                    .len();
+                                            let decompressed_len = data.len();
+
+                                            let mut compressed = vec![0; compressed_len];
+                                            let mut decompressed = vec![0; decompressed_len];
+
+                                            // compress_into
+                                            let n_bytes =
+                                                compress_into(&data, &mut compressed, $lvl, $codec)
+                                                    .unwrap();
+                                            assert_eq!(n_bytes, compressed_len);
+
+                                            // decompress_into
+                                            let n_bytes = decompress_into(
+                                                &compressed,
+                                                &mut decompressed,
+                                                $codec,
+                                            )
+                                            .unwrap();
+                                            assert_eq!(n_bytes, decompressed_len);
+
+                                            // round trip output matches original input
+                                            assert!(same_same(&data, &decompressed));
+                                        }
+                                    }
+                                };
+                            }
+
+                            test_data_size!(get_small_data);
+                            test_data_size!(gen_large_data);
+                        }
+                    };
+                }
+
+                test_compression_level!(level_three, CompressionLevel::Three);
+                test_compression_level!(level_one, CompressionLevel::One);
+                test_compression_level!(level_zero, CompressionLevel::Zero);
+            }
+        };
     }
 
-    #[test]
-    fn basic_compress_into() -> Result<()> {
-        let data = get_data()?;
-        let mut output = vec![0_u8; data.len()]; // assume compression isn't worse than input len.
-        let n_bytes = compress_into(
-            data.as_slice(),
-            &mut output,
-            CompressionLevel::Three,
-            Codec::Gzip,
-        )?;
-        println!(
-            "n_bytes: {} - {:?}",
-            n_bytes,
-            &output[..std::cmp::min(output.len() - 1, 100)]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn basic_compress() -> Result<()> {
-        let data = get_data()?;
-        let output = compress(Cursor::new(data), CompressionLevel::Three, Codec::Gzip)?;
-        println!(
-            "n_bytes: {:?}",
-            &output[..std::cmp::min(output.len() - 1, 100)]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn basic_decompress() -> Result<()> {
-        // compressed b"hello, world!"
-        let compressed = vec![
-            31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
-            73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
-        ];
-        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
-        assert_eq!(decompressed, b"hello, world!");
-        Ok(())
-    }
-
-    #[test]
-    fn basic_decompress_into() -> Result<()> {
-        // compressed b"hello, world!"
-        let compressed = vec![
-            31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
-            73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
-        ];
-        let mut decompressed = b"world!, hello".to_vec(); // same len, wrong data
-        let n_bytes = decompress_into(&compressed, &mut decompressed, Codec::Gzip)?;
-        assert_eq!(n_bytes, decompressed.len());
-        assert_eq!(&decompressed, b"hello, world!");
-        Ok(())
-    }
-
-    #[test]
-    fn larger_decompress() -> Result<()> {
-        /* Decompress data which is larger than BUF_SIZE */
-        let data = get_data()?;
-        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?;
-        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
-        assert!(same_same(&data, &decompressed));
-        Ok(())
-    }
+    test_codec!(gzip, Codec::Gzip);
+    test_codec!(deflate, Codec::Deflate);
+    test_codec!(zlib, Codec::Zlib);
 
     #[test]
     fn basic_decompress_multi_stream() -> Result<()> {
@@ -464,39 +498,6 @@ pub mod tests {
 
         let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
-        Ok(())
-    }
-
-    #[test]
-    fn basic_round_trip() -> Result<()> {
-        let data = b"hello, world!";
-        let compressed = compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?;
-        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
-        assert_eq!(decompressed, data);
-        Ok(())
-    }
-
-    #[test]
-    fn basic_round_trip_into() -> Result<()> {
-        let data = b"hello, world!".to_vec();
-
-        let compressed_len =
-            compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?.len();
-        let decompressed_len = data.len();
-
-        let mut compressed = vec![0; compressed_len];
-        let mut decompressed = vec![0; decompressed_len];
-
-        // compress_into
-        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, Codec::Gzip)?;
-        assert_eq!(n_bytes, compressed_len);
-
-        // decompress_into
-        let n_bytes = decompress_into(&compressed, &mut decompressed, Codec::Gzip)?;
-        assert_eq!(n_bytes, decompressed_len);
-
-        // round trip output matches original input
-        assert!(same_same(&data, &decompressed));
         Ok(())
     }
 
