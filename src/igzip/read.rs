@@ -148,6 +148,9 @@ impl<R: io::Read> io::Read for Decoder<R> {
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
         while self.zst.0.avail_out > 0 {
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                self.zst.reset();
+            }
             if self.zst.0.avail_in == 0 {
                 self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
                 self.zst.0.next_in = self.in_buf.as_mut_ptr();
@@ -186,15 +189,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
                 "\tAfter inflate: {}, bytes: {}, avail_in: {} avail_out: {}",
                 self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
             );
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                self.zst.reset();
-                if self.zst.0.avail_in == 0 {
-                    break;
-                }
-            }
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_HDR {
-                break;
-            }
         }
         n_bytes += buf.len() - self.zst.0.avail_out as usize;
 
