@@ -196,7 +196,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     let mut hdr = unsafe { hdr.assume_init() };
                     read_zlib_header(&mut self.zst.0, &mut hdr)?;
                     self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                    self.zst.0.avail_in -= 4; // skip adler-32
+                                                                              // self.zst.0.avail_in -= 4; // skip adler-32
                 }
             }
 

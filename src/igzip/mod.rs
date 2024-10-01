@@ -420,6 +420,36 @@ pub mod tests {
                                         fn basic_decompress() {
                                             /* Decompress data which is larger than BUF_SIZE */
                                             let data = $size();
+                                            // TODO: compat checking for each test?
+                                            // let mut compressed = vec![];
+                                            // match $codec {
+                                            //     Codec::Gzip => {
+                                            //         let mut encoder = flate2::read::GzEncoder::new(
+                                            //             data.as_slice(),
+                                            //             flate2::Compression::fast(),
+                                            //         );
+                                            //         io::copy(&mut encoder, &mut compressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Zlib => {
+                                            //         let mut encoder =
+                                            //             flate2::read::ZlibEncoder::new(
+                                            //                 data.as_slice(),
+                                            //                 flate2::Compression::fast(),
+                                            //             );
+                                            //         io::copy(&mut encoder, &mut compressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Deflate => {
+                                            //         let mut encoder =
+                                            //             flate2::read::DeflateEncoder::new(
+                                            //                 data.as_slice(),
+                                            //                 flate2::Compression::fast(),
+                                            //             );
+                                            //         io::copy(&mut encoder, &mut compressed)
+                                            //             .unwrap();
+                                            //     }
+                                            // }
                                             let compressed =
                                                 compress(data.as_slice(), $lvl, $codec).unwrap();
                                             let decompressed =
