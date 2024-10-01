@@ -189,6 +189,9 @@ impl<R: io::Read> io::Read for Decoder<R> {
                 "\tAfter inflate: {}, bytes: {}, avail_in: {} avail_out: {}",
                 self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
             );
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_HDR {
+                break;
+            }
         }
         n_bytes += buf.len() - self.zst.0.avail_out as usize;
 
