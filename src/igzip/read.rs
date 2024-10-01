@@ -148,9 +148,28 @@ impl<R: io::Read> io::Read for Decoder<R> {
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
         while self.zst.0.avail_out > 0 {
-            if self.zst.0.avail_in == 0 {
-                self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
-                self.zst.0.next_in = self.in_buf.as_mut_ptr();
+            // Keep in_buf full for avail_in
+            if self.zst.0.avail_in < self.in_buf.len() as _ {
+                // if null, it's our first assignment of compressed data in
+                if self.zst.0.next_in.is_null() {
+                    debug_assert_eq!(self.zst.0.avail_in, 0);
+                    self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as u32;
+                    self.zst.0.next_in = self.in_buf.as_mut_ptr();
+
+                // Otherwise shift current available in section to the front and read more
+                } else {
+                    let idx =
+                        unsafe { self.zst.0.next_in.offset_from(self.in_buf.as_ptr()) as usize };
+                    self.in_buf
+                        .copy_within(idx..idx + self.zst.0.avail_in as usize, 0);
+                    self.zst.0.next_in = self.in_buf.as_mut_ptr();
+
+                    // read some more and update avail_in
+                    let n = self
+                        .inner
+                        .read(&mut self.in_buf[self.zst.0.avail_in as usize..])?;
+                    self.zst.0.avail_in += n as u32;
+                }
 
                 // No more compressed data
                 if self.zst.0.avail_in == 0 {
