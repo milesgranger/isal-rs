@@ -113,9 +113,6 @@ pub struct Decoder<R: io::Read> {
     inner: R,
     zst: InflateState,
     in_buf: [u8; BUF_SIZE],
-    out_buf: Vec<u8>,
-    dsts: usize,
-    dste: usize,
     codec: Codec,
 }
 
@@ -128,9 +125,6 @@ impl<R: io::Read> Decoder<R> {
             inner: reader,
             zst,
             in_buf: [0u8; BUF_SIZE],
-            out_buf: Vec::with_capacity(BUF_SIZE),
-            dste: 0,
-            dsts: 0,
             codec,
         }
     }
@@ -144,125 +138,85 @@ impl<R: io::Read> Decoder<R> {
     pub fn get_ref(&self) -> &R {
         &self.inner
     }
-
-    // Read data from intermediate output buffer holding compressed output.
-    // It's unknown if the output from igzip will fit into buffer passed during read
-    // so we hold it here and empty as read calls pass.
-    // thanks to: https://github.com/BurntSushi/rust-snappy/blob/f9eb8d49c713adc48732fb95682a201a7b74d39a/src/read.rs#L327
-    #[inline(always)]
-    fn read_from_out_buf(&mut self, buf: &mut [u8]) -> usize {
-        let available_bytes = self.dste - self.dsts;
-        let count = std::cmp::min(available_bytes, buf.len());
-        buf[..count].copy_from_slice(&self.out_buf[self.dsts..self.dsts + count]);
-        self.dsts += count;
-        count
-    }
 }
 
 impl<R: io::Read> io::Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // Check if there is data left in out_buf, otherwise refill; if end state, return 0
-        let count = self.read_from_out_buf(buf);
-        if count > 0 {
-            Ok(count)
-        } else {
-            // Read out next buf len worth to compress; filling intermediate out_buf
-            debug_assert_eq!(self.zst.0.avail_in, 0);
-            self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
-            self.zst.0.next_in = self.in_buf.as_mut_ptr();
-            let avail_in_original = self.zst.0.avail_in;
+        self.zst.0.next_out = buf.as_mut_ptr();
+        self.zst.0.avail_out = buf.len() as _;
 
-            let mut n_bytes = 0;
-            while self.zst.0.avail_in != 0 {
-                if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
-                    // Read gzip header
-                    if self.codec == Codec::Gzip {
-                        // Read this member's gzip header
-                        let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
-                            mem::MaybeUninit::uninit();
-                        unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
-                        let mut gz_hdr = unsafe { gz_hdr.assume_init() };
-                        read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
+        // keep writing as much as possible to the output buf
+        let mut n_bytes = 0;
+        while self.zst.0.avail_out > 0 {
+            if self.zst.0.avail_in == 0 {
+                self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                self.zst.0.next_in = self.in_buf.as_mut_ptr();
+            }
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                // Read gzip header
+                if self.codec == Codec::Gzip {
+                    // Read this member's gzip header
+                    let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
+                        mem::MaybeUninit::uninit();
+                    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+                    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
+                    read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
 
-                    // Read zlib header
-                    } else if self.codec == Codec::Zlib {
-                        self.zst.0.crc_flag = 0; // zlib uses adler-32 checksum
+                // Read zlib header
+                } else if self.codec == Codec::Zlib {
+                    self.zst.0.crc_flag = 0; // zlib uses adler-32 checksum
 
-                        let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
-                            mem::MaybeUninit::uninit();
-                        unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
-                        let mut hdr = unsafe { hdr.assume_init() };
-                        read_zlib_header(&mut self.zst.0, &mut hdr)?;
-                        self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                        self.zst.0.avail_in -= 4; // skip adler-32
-                    }
-                }
-                // TODO: I'm pretty sure we can remove out_buf
-                // decompress member
-                loop {
-                    self.out_buf.resize(n_bytes + BUF_SIZE, 0);
-
-                    self.zst.0.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-                    self.zst.0.avail_out = BUF_SIZE as _;
-
-                    self.zst.step_inflate()?;
-
-                    n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
-
-                    let state = self.zst.block_state();
-                    match self.codec {
-                        Codec::Deflate | Codec::Zlib => {
-                            if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                                break;
-
-                            // refill avail in, still actively decoding but reached end of input
-                            } else if state == isal::isal_block_state_ISAL_BLOCK_CODED
-                                && self.zst.0.avail_in == 0
-                            {
-                                self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as _;
-                                self.zst.0.next_in = self.in_buf.as_mut_ptr();
-                            }
-                        }
-                        Codec::Gzip => {
-                            if state == isal::isal_block_state_ISAL_BLOCK_CODED
-                                || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
-                                || state == isal::isal_block_state_ISAL_BLOCK_HDR
-                                || state == isal::isal_block_state_ISAL_BLOCK_FINISH
-                            {
-                                break;
-                            }
-                        }
-                    }
-                }
-                if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                    self.zst.reset();
+                    let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
+                        mem::MaybeUninit::uninit();
+                    unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
+                    let mut hdr = unsafe { hdr.assume_init() };
+                    read_zlib_header(&mut self.zst.0, &mut hdr)?;
+                    self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
+                    self.zst.0.avail_in -= 4; // skip adler-32
                 }
             }
+            println!(
+                "Before inflate: {}, bytes: {}, avail_in: {}, avail_out: {}",
+                self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
+            );
 
-            // Check adler
-            if self.codec == Codec::Zlib && avail_in_original > 4 {
-                let decompressed = &self.out_buf[..n_bytes];
-                let c_adler32 = unsafe {
-                    isal::isal_adler32(1, decompressed.as_ptr(), decompressed.len() as _)
-                };
-                let bytes: [u8; 4] = (&self.in_buf
-                    [avail_in_original as usize - 4..avail_in_original as usize])
-                    .try_into()
-                    .unwrap();
-                let e_adler32 = u32::from_be_bytes(bytes);
-                if c_adler32 != e_adler32 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        crate::error::Error::DecompressionError(DecompCode::IncorrectChecksum),
-                    ));
+            self.zst.step_inflate()?;
+
+            println!(
+                "\tAfter inflate: {}, bytes: {}, avail_in: {} avail_out: {}",
+                self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
+            );
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                self.zst.reset();
+                if self.zst.0.avail_in == 0 {
+                    break;
                 }
             }
-            self.out_buf.truncate(n_bytes);
-            self.dste = n_bytes;
-            self.dsts = 0;
-
-            Ok(self.read_from_out_buf(buf))
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_HDR {
+                break;
+            }
         }
+        n_bytes += buf.len() - self.zst.0.avail_out as usize;
+
+        // Check adler
+        // TODO: incremental adler
+        // if self.codec == Codec::Zlib && avail_in_original > 4 {
+        //     let decompressed = &buf[..n_bytes];
+        //     let c_adler32 =
+        //         unsafe { isal::isal_adler32(1, decompressed.as_ptr(), decompressed.len() as _) };
+        //     let bytes: [u8; 4] = (&self.in_buf
+        //         [avail_in_original as usize - 4..avail_in_original as usize])
+        //         .try_into()
+        //         .unwrap();
+        //     let e_adler32 = u32::from_be_bytes(bytes);
+        //     if c_adler32 != e_adler32 {
+        //         return Err(std::io::Error::new(
+        //             std::io::ErrorKind::InvalidData,
+        //             crate::error::Error::DecompressionError(DecompCode::IncorrectChecksum),
+        //         ));
+        //     }
+        // }
+        Ok(n_bytes)
     }
 }
 
