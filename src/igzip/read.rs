@@ -180,6 +180,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     self.zst.0.avail_in -= 4; // skip adler-32
                 }
             }
+
             println!(
                 "Before inflate: {}, bytes: {}, avail_in: {}, avail_out: {}",
                 self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
