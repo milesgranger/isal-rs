@@ -145,8 +145,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
         self.zst.0.next_out = buf.as_mut_ptr();
         self.zst.0.avail_out = buf.len() as _;
 
-        let avail_out = buf.len();
-
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
         while self.zst.0.avail_out > 0 {
@@ -188,7 +186,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
             );
 
             self.zst.step_inflate()?;
-
             n_bytes = buf.len() - self.zst.0.avail_out as usize;
 
             println!(
@@ -197,9 +194,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
             );
             if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
-            }
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_HDR {
-                break;
             }
         }
 
