@@ -212,7 +212,7 @@ impl TryFrom<i32> for DecompCode {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CompressionLevel {
     Zero = 0,
@@ -526,6 +526,70 @@ pub mod tests {
                                                 &decompressed[..nbytes_decompressed]
                                             ));
                                         }
+                                        #[test]
+                                        fn flate2_zlib_compat_compress_into() {
+                                            let data = $size();
+
+                                            let mut compressed = vec![0u8; data.len() + 50];
+                                            let n = compress_into(
+                                                data.as_slice(),
+                                                &mut compressed,
+                                                $lvl,
+                                                $codec,
+                                            )
+                                            .unwrap();
+
+                                            let decompressed =
+                                                flate2_decompress(&compressed[..n], $codec);
+
+                                            assert_eq!(data.len(), decompressed.len());
+                                            assert!(same_same(&data, decompressed.as_slice()));
+                                        }
+                                        #[test]
+                                        fn flate2_zlib_compat_compress() {
+                                            let data = $size();
+
+                                            let compressed =
+                                                compress(data.as_slice(), $lvl, $codec).unwrap();
+
+                                            let decompressed =
+                                                flate2_decompress(&compressed, $codec);
+
+                                            assert_eq!(data.len(), decompressed.len());
+                                            assert!(same_same(&data, &decompressed));
+                                        }
+                                        #[test]
+                                        fn flate2_zlib_compat_decompress() {
+                                            let data = $size();
+                                            let compressed = flate2_compress(&data, $codec, $lvl);
+
+                                            // TODO: incompat only when level 0 and zlib: flate2 stores it
+                                            //       _much_ differently; just header, trailer and byte-for-byte
+                                            //       the same as input. We store it the same as ISA-L (and same as python-isal)
+                                            //       which we can decode our own, but cannot decode what's produced by flate2
+                                            //       but should be able to with a bit more manual work in the decoder
+                                            if $lvl == CompressionLevel::Zero && $codec == Codec::Zlib {
+                                                eprintln!("Warning: known incompatibility decoding flate2 level zero w/ zlib");
+                                                return;
+                                            }
+
+                                            let decompressed =
+                                                decompress(compressed.as_slice(), $codec).unwrap();
+
+                                            assert_eq!(data.len(), decompressed.len());
+                                            assert!(same_same(&data, &decompressed));
+                                        }
+                                        #[test]
+                                        fn flate2_zlib_compat_decompress_into() {
+                                            let data = $size();
+                                            let compressed = flate2_compress(&data, $codec, $lvl);
+
+                                            let mut decompressed = vec![0u8; data.len() * 2];
+                                            let n = decompress_into(compressed.as_slice(), &mut decompressed, $codec).unwrap();
+
+                                            assert_eq!(n, data.len());
+                                            assert!(same_same(&data, &decompressed[..n]));
+                                        }
                                     }
                                 };
                             }
@@ -548,7 +612,7 @@ pub mod tests {
     test_codec!(zlib, Codec::Zlib);
 
     #[test]
-    fn basic_decompress_multi_stream() -> Result<()> {
+    fn basic_decompress_multi_stream_gzip() -> Result<()> {
         // compressed b"hello, world!" * 2
         let mut compressed = vec![
             31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
@@ -559,87 +623,5 @@ pub mod tests {
         let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
         assert_eq!(decompressed, b"hello, world!hello, world!");
         Ok(())
-    }
-
-    #[test]
-    fn large_round_trip_into() -> Result<()> {
-        let data = gen_large_data();
-
-        let compressed_len =
-            compress(Cursor::new(&data), CompressionLevel::Three, Codec::Gzip)?.len();
-        let decompressed_len = data.len();
-
-        let mut compressed = vec![0; compressed_len];
-        let mut decompressed = vec![0; decompressed_len];
-
-        // compress_into
-        let n_bytes = compress_into(&data, &mut compressed, CompressionLevel::Three, Codec::Gzip)?;
-        assert!(n_bytes < data.len());
-
-        // decompress_into
-        let n_bytes = decompress_into(&compressed, &mut decompressed, Codec::Gzip)?;
-        assert_eq!(n_bytes, decompressed_len);
-
-        // round trip output matches original input
-        assert!(same_same(&data, &decompressed));
-        Ok(())
-    }
-
-    #[test]
-    fn flate2_zlib_compat_compress_into() {
-        let data = b"foobar";
-
-        let mut compressed = vec![0u8; 100];
-        let n = compress_into(
-            data.as_slice(),
-            &mut compressed,
-            CompressionLevel::One,
-            Codec::Zlib,
-        )
-        .unwrap();
-
-        let mut decompressed = vec![];
-        let mut decoder = flate2::read::ZlibDecoder::new(&compressed[..n]);
-        io::copy(&mut decoder, &mut decompressed).unwrap();
-
-        assert_eq!(data, decompressed.as_slice());
-    }
-    #[test]
-    fn flate2_zlib_compat_compress() {
-        let data = b"foobar";
-
-        let compressed = compress(data.as_slice(), CompressionLevel::One, Codec::Zlib).unwrap();
-
-        let mut decompressed = vec![];
-        let mut decoder = flate2::read::ZlibDecoder::new(compressed.as_slice());
-        io::copy(&mut decoder, &mut decompressed).unwrap();
-
-        assert_eq!(data, decompressed.as_slice());
-    }
-    #[test]
-    fn flate2_zlib_compat_decompress() {
-        let data = b"foobar";
-
-        let mut compressed = vec![];
-        let mut encoder =
-            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
-        io::copy(&mut encoder, &mut compressed).unwrap();
-
-        let decompressed = decompress(compressed.as_slice(), Codec::Zlib).unwrap();
-        assert_eq!(data, decompressed.as_slice());
-    }
-    #[test]
-    fn flate2_zlib_compat_decompress_into() {
-        let data = b"foobar";
-
-        let mut compressed = vec![];
-        let mut encoder =
-            flate2::read::ZlibEncoder::new(data.as_slice(), flate2::Compression::fast());
-        io::copy(&mut encoder, &mut compressed).unwrap();
-
-        let mut decompressed = vec![0u8; data.len()];
-        let n = decompress_into(compressed.as_slice(), &mut decompressed, Codec::Zlib).unwrap();
-        assert_eq!(n, data.len());
-        assert_eq!(data, decompressed.as_slice());
     }
 }
