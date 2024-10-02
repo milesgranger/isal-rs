@@ -153,9 +153,8 @@ pub struct Decoder<R: io::Read> {
     inner: R,
     zst: InflateState,
     in_buf: [u8; BUF_SIZE],
+    #[allow(dead_code)]
     codec: Codec,
-    adler32: u32,
-    check_adler32: bool,
 }
 
 impl<R: io::Read> Decoder<R> {
@@ -168,8 +167,6 @@ impl<R: io::Read> Decoder<R> {
             zst,
             in_buf: [0u8; BUF_SIZE],
             codec,
-            adler32: 1,
-            check_adler32: true,
         }
     }
 
@@ -182,15 +179,6 @@ impl<R: io::Read> Decoder<R> {
     pub fn get_ref(&self) -> &R {
         &self.inner
     }
-
-    /// Configure the checking of adler32 when in ZLib codec mode, has no effect in Deflate or Gzip settings.
-    /// defaults to `true`
-    ///
-    /// It's recommended to always check, so it's purposely left out of the constructor
-    /// thus setting it to `false` is made to be a very deliberate action.
-    pub fn perform_adler32_check(&mut self, check: bool) {
-        self.check_adler32 = check;
-    }
 }
 
 impl<R: io::Read> io::Read for Decoder<R> {
@@ -200,7 +188,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
 
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
-        let mut avail_in_last = 0;
         while self.zst.0.avail_out > 0 {
             // Keep in_buf full for avail_in
             if self.zst.0.avail_in < self.in_buf.len() as _ {
@@ -225,8 +212,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     self.zst.0.avail_in += n as u32;
                 };
 
-                avail_in_last = self.zst.0.avail_in;
-
                 // Block finished, reset if we have more compressed data, otherwise exit
                 if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                     if self.zst.0.avail_in == 0 {
@@ -238,29 +223,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
 
             self.zst.step_inflate()?;
             n_bytes = buf.len() - self.zst.0.avail_out as usize;
-
-            // Check adler
-            if self.codec == Codec::Zlib
-                && self.check_adler32
-                && n_bytes >= buf.len()
-                && self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH
-            {
-                let decompressed = &buf[..n_bytes];
-                self.adler32 = unsafe {
-                    isal::isal_adler32(self.adler32, decompressed.as_ptr(), decompressed.len() as _)
-                };
-                let bytes: [u8; 4] = (&self.in_buf
-                    [avail_in_last as usize - 4..avail_in_last as usize])
-                    .try_into()
-                    .unwrap();
-                let e_adler32 = u32::from_be_bytes(bytes);
-                if self.adler32 != e_adler32 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        crate::error::Error::DecompressionError(DecompCode::IncorrectChecksum),
-                    ));
-                }
-            }
         }
 
         Ok(n_bytes)
@@ -373,15 +335,6 @@ impl<R: io::Read> ZlibDecoder<R> {
     // Reference to underlying reader
     pub fn get_ref(&self) -> &R {
         &self.inner.inner
-    }
-
-    /// Configure the checking of adler32 when in ZLib codec mode, has no effect in Deflate or Gzip settings.
-    /// defaults to `true`
-    ///
-    /// It's recommended to always check, so it's purposely left out of the constructor
-    /// thus setting it to `false` is made to be a very deliberate action.
-    pub fn perform_adler32_check(&mut self, check: bool) {
-        self.inner.check_adler32 = check;
     }
 }
 

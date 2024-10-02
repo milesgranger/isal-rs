@@ -376,7 +376,6 @@ pub fn read_zlib_header(
 #[cfg(test)]
 pub mod tests {
 
-    use io::Cursor;
     use md5;
 
     use super::*;
