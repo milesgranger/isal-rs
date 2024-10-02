@@ -235,28 +235,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     self.zst.reset();
                 }
             }
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
-                // Read gzip header
-                if self.codec == Codec::Gzip {
-                    // Read this member's gzip header
-                    let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
-                        mem::MaybeUninit::uninit();
-                    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
-                    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
-                    read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
-
-                // Read zlib header
-                } else if self.codec == Codec::Zlib {
-                    self.zst.0.crc_flag = 0; // zlib uses adler-32 checksum
-
-                    let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
-                        mem::MaybeUninit::uninit();
-                    unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
-                    let mut hdr = unsafe { hdr.assume_init() };
-                    read_zlib_header(&mut self.zst.0, &mut hdr)?;
-                    self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                }
-            }
 
             self.zst.step_inflate()?;
             n_bytes = buf.len() - self.zst.0.avail_out as usize;

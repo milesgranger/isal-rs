@@ -590,6 +590,27 @@ pub mod tests {
                                             assert_eq!(n, data.len());
                                             assert!(same_same(&data, &decompressed[..n]));
                                         }
+                                        #[test]
+                                        fn basic_decompress_multi_stream() {
+
+                                            // multi-stream only supported for gzip
+                                            if $codec != Codec::Gzip {
+                                                return;
+                                            }
+
+                                            let data = $size();
+
+                                            let mut compressed = compress(data.as_slice(), $lvl, $codec).unwrap();
+                                            compressed.extend(compressed.clone());
+
+                                            let decompressed = decompress(compressed.as_slice(), $codec).unwrap();
+
+                                            let mut expected = data.clone();
+                                            expected.extend(data.clone());
+
+                                            assert_eq!(expected.len(), decompressed.len());
+                                            assert!(same_same(&expected, &decompressed));
+                                        }
                                     }
                                 };
                             }
@@ -610,18 +631,4 @@ pub mod tests {
     test_codec!(gzip, Codec::Gzip);
     test_codec!(deflate, Codec::Deflate);
     test_codec!(zlib, Codec::Zlib);
-
-    #[test]
-    fn basic_decompress_multi_stream_gzip() -> Result<()> {
-        // compressed b"hello, world!" * 2
-        let mut compressed = vec![
-            31, 139, 8, 0, 0, 0, 0, 0, 0, 255, 203, 72, 205, 201, 201, 215, 81, 40, 207, 47, 202,
-            73, 81, 4, 0, 19, 141, 152, 88, 13, 0, 0, 0,
-        ];
-        compressed.extend(compressed.clone());
-
-        let decompressed = decompress(Cursor::new(compressed), Codec::Gzip)?;
-        assert_eq!(decompressed, b"hello, world!hello, world!");
-        Ok(())
-    }
 }
