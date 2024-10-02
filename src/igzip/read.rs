@@ -89,6 +89,7 @@ impl<R: io::Read> io::Read for Encoder<R> {
                 self.stream.stream.next_in = self.in_buf.as_mut_ptr();
             }
 
+            // If it's zstate end, we can exit early if no more avail in, otherwise start next by resetting
             if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
                 if self.stream.stream.avail_in == 0 {
                     println!(
@@ -119,9 +120,6 @@ impl<R: io::Read> io::Read for Encoder<R> {
                 self.stream.stream.avail_out,
                 nbytes
             );
-            // if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
-            //     unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
-            // }
         }
 
         Ok(nbytes)
@@ -213,9 +211,13 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     self.zst.0.avail_in += n as u32;
                 }
 
-                // No more compressed data
-                if self.zst.0.avail_in == 0 {
-                    break;
+                if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                    // No more compressed data
+                    if self.zst.0.avail_in == 0 {
+                        break;
+                    } else {
+                        self.zst.reset();
+                    }
                 }
             }
             if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
@@ -238,7 +240,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     let mut hdr = unsafe { hdr.assume_init() };
                     read_zlib_header(&mut self.zst.0, &mut hdr)?;
                     self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                    self.zst.0.avail_in -= 4; // skip adler-32
+                                                                              // self.zst.0.avail_in -= 4; // skip adler-32
                 }
             }
 
@@ -254,9 +256,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
                 "\tAfter inflate: {}, bytes: {}, avail_in: {} avail_out: {}",
                 self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
             );
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                self.zst.reset();
-            }
         }
 
         // Check adler
