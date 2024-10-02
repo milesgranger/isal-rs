@@ -64,24 +64,70 @@ impl<R: io::Read> io::Read for Encoder<R> {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
-        if self.stream.stream.internal_state.state != isal::isal_zstate_state_ZSTATE_END
-            && (self.stream.stream.avail_in == 0
-                || self.stream.stream.internal_state.state
-                    != isal::isal_zstate_state_ZSTATE_TMP_FLUSH_ICF_BUFFER)
-        {
-            // Read out next buf len worth to compress; filling intermediate out_buf
-            self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
-            self.stream.stream.next_in = self.in_buf.as_mut_ptr();
-            self.stream.stream.end_of_stream =
-                (self.stream.stream.avail_in < self.in_buf.len() as _) as _;
-        }
-
         self.stream.stream.avail_out = buf.len() as _;
         self.stream.stream.next_out = buf.as_mut_ptr();
 
-        self.stream.deflate()?;
+        let mut nbytes = 0;
+        while self.stream.stream.avail_out > 0 {
+            if self.stream.stream.internal_state.state
+                != isal::isal_zstate_state_ZSTATE_TMP_FLUSH_ICF_BUFFER
+            {
+                // Read out next buf len worth to compress; filling intermediate out_buf
+                if self.stream.stream.next_in.is_null() {
+                    self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                    self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+                    self.stream.stream.end_of_stream = (self.stream.stream.avail_in == 0) as _;
+                } else {
+                    let idx = unsafe {
+                        self.stream.stream.next_in.offset_from(self.in_buf.as_ptr()) as usize
+                    };
+                    self.in_buf
+                        .copy_within(idx..idx + self.stream.stream.avail_in as usize, 0);
+                    let avail_in = self
+                        .inner
+                        .read(&mut self.in_buf[self.stream.stream.avail_in as usize..])?
+                        as usize;
+                    self.stream.stream.avail_in += avail_in as u32;
+                    self.stream.stream.end_of_stream = (avail_in == 0) as _;
+                    self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+                }
 
-        let nbytes = buf.len() - self.stream.stream.avail_out as usize;
+                if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
+                    if self.stream.stream.avail_in == 0 {
+                        println!(
+                            "Early exit: {}, avail_in: {}, avail_out: {}",
+                            self.stream.stream.internal_state.state,
+                            self.stream.stream.avail_in,
+                            self.stream.stream.avail_out
+                        );
+                        return Ok(nbytes);
+                    } else {
+                        unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
+                    }
+                }
+            }
+
+            println!(
+                "Before deflate: {}, avail_in: {}, avail_out: {}",
+                self.stream.stream.internal_state.state,
+                self.stream.stream.avail_in,
+                self.stream.stream.avail_out
+            );
+
+            self.stream.deflate()?;
+            nbytes = buf.len() - self.stream.stream.avail_out as usize;
+            println!(
+                "\tAfter deflate: {}, avail_in: {}, avail_out: {}, nbytes: {}",
+                self.stream.stream.internal_state.state,
+                self.stream.stream.avail_in,
+                self.stream.stream.avail_out,
+                nbytes
+            );
+            // if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
+            //     unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
+            // }
+        }
+
         Ok(nbytes)
     }
 }
@@ -196,7 +242,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                     let mut hdr = unsafe { hdr.assume_init() };
                     read_zlib_header(&mut self.zst.0, &mut hdr)?;
                     self.zst.0.next_in = self.in_buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                                                                              // self.zst.0.avail_in -= 4; // skip adler-32
+                    self.zst.0.avail_in -= 4; // skip adler-32
                 }
             }
 

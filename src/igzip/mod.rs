@@ -248,6 +248,8 @@ pub struct ZStream {
     #[allow(dead_code)] // Pointer used by stream, kept here to release when dropped
     level_buf: Vec<u8>,
     kind: ZStreamKind,
+    #[allow(dead_code)]
+    hufftables: isal::isal_hufftables,
 }
 
 impl ZStream {
@@ -273,8 +275,20 @@ impl ZStream {
         zstream.level_buf = buf.as_mut_ptr();
         zstream.level_buf_size = buf.len() as _;
 
+        let hufftables = unsafe {
+            let mut hufftables_uninit: mem::MaybeUninit<isal::isal_hufftables> =
+                mem::MaybeUninit::uninit();
+            isal::isal_deflate_set_hufftables(
+                &mut zstream,
+                hufftables_uninit.as_mut_ptr(),
+                isal::IGZIP_HUFFTABLE_DEFAULT as _,
+            );
+            hufftables_uninit.assume_init()
+        };
+
         Self {
             stream: zstream,
+            hufftables,
             level_buf: buf,
             kind,
         }
@@ -425,7 +439,7 @@ pub mod tests {
                                             //     Codec::Gzip => {
                                             //         let mut encoder = flate2::read::GzEncoder::new(
                                             //             data.as_slice(),
-                                            //             flate2::Compression::fast(),
+                                            //             flate2::Compression::none(),
                                             //         );
                                             //         io::copy(&mut encoder, &mut compressed)
                                             //             .unwrap();
@@ -434,7 +448,7 @@ pub mod tests {
                                             //         let mut encoder =
                                             //             flate2::read::ZlibEncoder::new(
                                             //                 data.as_slice(),
-                                            //                 flate2::Compression::fast(),
+                                            //                 flate2::Compression::none(),
                                             //             );
                                             //         io::copy(&mut encoder, &mut compressed)
                                             //             .unwrap();
@@ -443,7 +457,7 @@ pub mod tests {
                                             //         let mut encoder =
                                             //             flate2::read::DeflateEncoder::new(
                                             //                 data.as_slice(),
-                                            //                 flate2::Compression::fast(),
+                                            //                 flate2::Compression::none(),
                                             //             );
                                             //         io::copy(&mut encoder, &mut compressed)
                                             //             .unwrap();
@@ -451,18 +465,102 @@ pub mod tests {
                                             // }
                                             let compressed =
                                                 compress(data.as_slice(), $lvl, $codec).unwrap();
+
+                                            // let mut decompressed = vec![];
+                                            // match $codec {
+                                            //     Codec::Gzip => {
+                                            //         let mut decoder = flate2::read::GzDecoder::new(
+                                            //             compressed.as_slice(),
+                                            //         );
+                                            //         io::copy(&mut decoder, &mut decompressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Zlib => {
+                                            //         let mut decoder =
+                                            //             flate2::read::ZlibDecoder::new(
+                                            //                 compressed.as_slice(),
+                                            //             );
+                                            //         io::copy(&mut decoder, &mut decompressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Deflate => {
+                                            //         let mut decoder =
+                                            //             flate2::read::DeflateDecoder::new(
+                                            //                 compressed.as_slice(),
+                                            //             );
+                                            //         io::copy(&mut decoder, &mut decompressed)
+                                            //             .unwrap();
+                                            //     }
+                                            // }
                                             let decompressed =
                                                 decompress(compressed.as_slice(), $codec).unwrap();
+                                            assert_eq!(data.len(), decompressed.len());
                                             assert!(same_same(&data, &decompressed));
                                         }
                                         #[test]
                                         fn basic_round_trip() {
-                                            let data = b"hello, world!";
+                                            let data = $size();
+                                            // let mut compressed = vec![];
+                                            // match $codec {
+                                            //     Codec::Gzip => {
+                                            //         let mut encoder = flate2::read::GzEncoder::new(
+                                            //             data.as_slice(),
+                                            //             flate2::Compression::none(),
+                                            //         );
+                                            //         io::copy(&mut encoder, &mut compressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Zlib => {
+                                            //         let mut encoder =
+                                            //             flate2::read::ZlibEncoder::new(
+                                            //                 data.as_slice(),
+                                            //                 flate2::Compression::none(),
+                                            //             );
+                                            //         io::copy(&mut encoder, &mut compressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Deflate => {
+                                            //         let mut encoder =
+                                            //             flate2::read::DeflateEncoder::new(
+                                            //                 data.as_slice(),
+                                            //                 flate2::Compression::none(),
+                                            //             );
+                                            //         io::copy(&mut encoder, &mut compressed)
+                                            //             .unwrap();
+                                            //     }
+                                            // }
                                             let compressed =
                                                 compress(data.as_slice(), $lvl, $codec).unwrap();
+
+                                            // let mut decompressed = vec![];
+                                            // match $codec {
+                                            //     Codec::Gzip => {
+                                            //         let mut decoder = flate2::read::GzDecoder::new(
+                                            //             data.as_slice(),
+                                            //         );
+                                            //         io::copy(&mut decoder, &mut decompressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Zlib => {
+                                            //         let mut decoder =
+                                            //             flate2::read::ZlibDecoder::new(
+                                            //                 data.as_slice(),
+                                            //             );
+                                            //         io::copy(&mut decoder, &mut decompressed)
+                                            //             .unwrap();
+                                            //     }
+                                            //     Codec::Deflate => {
+                                            //         let mut decoder =
+                                            //             flate2::read::DeflateDecoder::new(
+                                            //                 data.as_slice(),
+                                            //             );
+                                            //         io::copy(&mut decoder, &mut decompressed)
+                                            //             .unwrap();
+                                            //     }
+                                            // }
                                             let decompressed =
                                                 decompress(compressed.as_slice(), $codec).unwrap();
-                                            assert!(same_same(&decompressed, data));
+                                            assert!(same_same(&decompressed, data.as_slice()));
                                         }
                                         #[test]
                                         fn basic_round_trip_into() {
@@ -508,7 +606,7 @@ pub mod tests {
 
                 test_compression_level!(level_three, CompressionLevel::Three);
                 test_compression_level!(level_one, CompressionLevel::One);
-                // test_compression_level!(level_zero, CompressionLevel::Zero);
+                test_compression_level!(level_zero, CompressionLevel::Zero);
             }
         };
     }
