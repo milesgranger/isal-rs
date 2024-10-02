@@ -69,41 +69,37 @@ impl<R: io::Read> io::Read for Encoder<R> {
 
         let mut nbytes = 0;
         while self.stream.stream.avail_out > 0 {
-            if self.stream.stream.internal_state.state
-                != isal::isal_zstate_state_ZSTATE_TMP_FLUSH_ICF_BUFFER
-            {
-                // Read out next buf len worth to compress; filling intermediate out_buf
-                if self.stream.stream.next_in.is_null() {
-                    self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
-                    self.stream.stream.next_in = self.in_buf.as_mut_ptr();
-                    self.stream.stream.end_of_stream = (self.stream.stream.avail_in == 0) as _;
-                } else {
-                    let idx = unsafe {
-                        self.stream.stream.next_in.offset_from(self.in_buf.as_ptr()) as usize
-                    };
-                    self.in_buf
-                        .copy_within(idx..idx + self.stream.stream.avail_in as usize, 0);
-                    let avail_in = self
-                        .inner
-                        .read(&mut self.in_buf[self.stream.stream.avail_in as usize..])?
-                        as usize;
-                    self.stream.stream.avail_in += avail_in as u32;
-                    self.stream.stream.end_of_stream = (avail_in == 0) as _;
-                    self.stream.stream.next_in = self.in_buf.as_mut_ptr();
-                }
+            // Read out next buf len worth to compress; filling intermediate out_buf
+            if self.stream.stream.next_in.is_null() {
+                self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+                self.stream.stream.end_of_stream = (self.stream.stream.avail_in == 0) as _;
+            } else {
+                let idx = unsafe {
+                    self.stream.stream.next_in.offset_from(self.in_buf.as_ptr()) as usize
+                };
+                self.in_buf
+                    .copy_within(idx..idx + self.stream.stream.avail_in as usize, 0);
+                let avail_in = self
+                    .inner
+                    .read(&mut self.in_buf[self.stream.stream.avail_in as usize..])?
+                    as usize;
+                self.stream.stream.avail_in += avail_in as u32;
+                self.stream.stream.end_of_stream = (avail_in == 0) as _;
+                self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+            }
 
-                if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
-                    if self.stream.stream.avail_in == 0 {
-                        println!(
-                            "Early exit: {}, avail_in: {}, avail_out: {}",
-                            self.stream.stream.internal_state.state,
-                            self.stream.stream.avail_in,
-                            self.stream.stream.avail_out
-                        );
-                        return Ok(nbytes);
-                    } else {
-                        unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
-                    }
+            if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
+                if self.stream.stream.avail_in == 0 {
+                    println!(
+                        "Early exit: {}, avail_in: {}, avail_out: {}",
+                        self.stream.stream.internal_state.state,
+                        self.stream.stream.avail_in,
+                        self.stream.stream.avail_out
+                    );
+                    return Ok(nbytes);
+                } else {
+                    unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
                 }
             }
 
