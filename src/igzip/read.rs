@@ -154,6 +154,7 @@ pub struct Decoder<R: io::Read> {
     zst: InflateState,
     in_buf: [u8; BUF_SIZE],
     codec: Codec,
+    adler32: u32,
 }
 
 impl<R: io::Read> Decoder<R> {
@@ -166,6 +167,7 @@ impl<R: io::Read> Decoder<R> {
             zst,
             in_buf: [0u8; BUF_SIZE],
             codec,
+            adler32: 1,
         }
     }
 
@@ -187,6 +189,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
 
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
+        let mut avail_in_last = 0;
         while self.zst.0.avail_out > 0 {
             // Keep in_buf full for avail_in
             if self.zst.0.avail_in < self.in_buf.len() as _ {
@@ -210,6 +213,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
                         .read(&mut self.in_buf[self.zst.0.avail_in as usize..])?;
                     self.zst.0.avail_in += n as u32;
                 }
+                avail_in_last = self.zst.0.avail_in;
 
                 if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                     // No more compressed data
@@ -256,26 +260,31 @@ impl<R: io::Read> io::Read for Decoder<R> {
                 "\tAfter inflate: {}, bytes: {}, avail_in: {} avail_out: {}",
                 self.zst.0.block_state, n_bytes, self.zst.0.avail_in, self.zst.0.avail_out
             );
+
+            // Check adler
+            // TODO: incremental adler
+            if self.codec == Codec::Zlib
+                && n_bytes >= buf.len()
+                && self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH
+            {
+                let decompressed = &buf[..n_bytes];
+                self.adler32 = unsafe {
+                    isal::isal_adler32(self.adler32, decompressed.as_ptr(), decompressed.len() as _)
+                };
+                let bytes: [u8; 4] = (&self.in_buf
+                    [avail_in_last as usize - 4..avail_in_last as usize])
+                    .try_into()
+                    .unwrap();
+                let e_adler32 = u32::from_be_bytes(bytes);
+                if self.adler32 != e_adler32 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        crate::error::Error::DecompressionError(DecompCode::IncorrectChecksum),
+                    ));
+                }
+            }
         }
 
-        // Check adler
-        // TODO: incremental adler
-        // if self.codec == Codec::Zlib && avail_in_original > 4 {
-        //     let decompressed = &buf[..n_bytes];
-        //     let c_adler32 =
-        //         unsafe { isal::isal_adler32(1, decompressed.as_ptr(), decompressed.len() as _) };
-        //     let bytes: [u8; 4] = (&self.in_buf
-        //         [avail_in_original as usize - 4..avail_in_original as usize])
-        //         .try_into()
-        //         .unwrap();
-        //     let e_adler32 = u32::from_be_bytes(bytes);
-        //     if c_adler32 != e_adler32 {
-        //         return Err(std::io::Error::new(
-        //             std::io::ErrorKind::InvalidData,
-        //             crate::error::Error::DecompressionError(DecompCode::IncorrectChecksum),
-        //         ));
-        //     }
-        // }
         Ok(n_bytes)
     }
 }
