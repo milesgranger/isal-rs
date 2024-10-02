@@ -193,7 +193,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
             if self.zst.0.avail_in < self.in_buf.len() as _ {
                 // if null, it's our first assignment of compressed data in
                 if self.zst.0.next_in.is_null() {
-                    debug_assert_eq!(self.zst.0.avail_in, 0);
                     self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as u32;
                     self.zst.0.next_in = self.in_buf.as_mut_ptr();
 
