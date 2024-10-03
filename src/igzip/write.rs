@@ -214,27 +214,34 @@ impl<W: io::Write> Decoder<W> {
 
 impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.zst.0.next_out = self.out_buf.as_mut_ptr();
-        self.zst.0.avail_out = self.out_buf.len() as _;
-
         self.zst.0.next_in = buf.as_ptr() as *mut _;
         self.zst.0.avail_in = buf.len() as _;
 
+        self.zst.0.next_out = self.out_buf.as_mut_ptr();
+        self.zst.0.avail_out = self.out_buf.len() as _;
+
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
-        while self.zst.0.avail_out > 0 && self.zst.0.avail_in > 0 {
+        while self.zst.0.avail_in > 0 {
             self.zst.step_inflate()?;
             n_bytes = buf.len() - self.zst.0.avail_in as usize;
 
             if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
             }
+
+            if self.zst.0.avail_out == 0 {
+                let bytes_written = self.out_buf.len() - self.zst.0.avail_out as usize;
+                self.inner.write_all(&self.out_buf[..bytes_written])?;
+                self.zst.0.next_out = self.out_buf.as_mut_ptr();
+                self.zst.0.avail_out = self.out_buf.len() as _;
+            }
+
             println!(
                 "Looping with state: {}, avail_in: {}, avail_out: {}",
                 self.zst.0.block_state, self.zst.0.avail_in, self.zst.0.avail_out
             )
         }
-
         let bytes_written = self.out_buf.len() - self.zst.0.avail_out as usize;
         self.inner.write_all(&self.out_buf[..bytes_written])?;
 
