@@ -183,7 +183,7 @@ impl<W: io::Write> io::Write for Encoder<W> {
 pub struct Decoder<W: io::Write> {
     inner: W,
     zst: InflateState,
-    out_buf: [u8; BUF_SIZE],
+    out_buf: [u8; BUF_SIZE * 4],
     #[allow(dead_code)]
     codec: Codec,
 }
@@ -196,7 +196,7 @@ impl<W: io::Write> Decoder<W> {
         Self {
             inner: writer,
             zst,
-            out_buf: [0u8; BUF_SIZE],
+            out_buf: [0u8; BUF_SIZE * 4],
             codec,
         }
     }
@@ -214,74 +214,31 @@ impl<W: io::Write> Decoder<W> {
 
 impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Check if there is data left in out_buf, otherwise refill; if end state, return 0
-        // Read out next buf len worth to compress; filling intermediate out_buf
-        println!(
-            "Entering w/ state: {}, buf in: {}",
-            self.zst.block_state(),
-            buf.len()
-        );
-        let state = self.zst.block_state();
-        if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
-            self.zst.reset();
-        }
-        self.zst.0.avail_in = buf.len() as _;
+        self.zst.0.next_out = self.out_buf.as_mut_ptr();
+        self.zst.0.avail_out = self.out_buf.len() as _;
+
         self.zst.0.next_in = buf.as_ptr() as *mut _;
+        self.zst.0.avail_in = buf.len() as _;
 
-        if self.zst.0.next_out.is_null() {
-            self.zst.0.next_out = self.out_buf.as_mut_ptr();
-            self.zst.0.avail_out = self.out_buf.len() as _;
-        } else {
-            let idx = unsafe { self.zst.0.next_out.offset_from(self.out_buf.as_ptr()) as usize };
-            let len = self.out_buf.len();
-            self.out_buf.copy_within(idx..len, 0);
-            self.zst.0.next_out = self.out_buf.as_mut_ptr();
-            self.zst.0.avail_out = self.out_buf.len() as _;
-        }
-
-        // println!(
-        //     "\tOuter loop state before deflate: {}",
-        //     self.zst.0.block_state
-        // );
-        loop {
+        // keep writing as much as possible to the output buf
+        let mut n_bytes = 0;
+        while self.zst.0.avail_out > 0 && self.zst.0.avail_in > 0 {
             self.zst.step_inflate()?;
+            n_bytes = buf.len() - self.zst.0.avail_in as usize;
 
-            if self.zst.0.block_state != isal::isal_block_state_ISAL_BLOCK_CODED {
-                break;
-            } else if self.zst.0.avail_out == 0
-                && self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_CODED
-            {
-                let nbytes = self.out_buf.len() - self.zst.0.avail_out as usize;
-                self.inner.write_all(&self.out_buf[..nbytes])?;
-                self.zst.0.next_out = self.out_buf.as_mut_ptr();
-                self.zst.0.avail_out = self.out_buf.len() as _;
-            } else if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
-            } else {
-                println!(
-                    "Not breaking w/ state: {}, avail_in: {}, avail_out: {}",
-                    self.zst.block_state(),
-                    self.zst.0.avail_in,
-                    self.zst.0.avail_out
-                )
             }
+            println!(
+                "Looping with state: {}, avail_in: {}, avail_out: {}",
+                self.zst.0.block_state, self.zst.0.avail_in, self.zst.0.avail_out
+            )
         }
-        // println!(
-        //     "\tOuter loop state after deflate: {}",
-        //     self.zst.block_state()
-        // );
-        let nbytes = self.out_buf.len() - self.zst.0.avail_out as usize;
-        self.inner.write_all(&self.out_buf[..nbytes])?;
 
-        let nbytes = buf.len() - self.zst.0.avail_in as usize;
-        println!(
-            "State {}, nbytes: {}, avail_in: {}",
-            self.zst.block_state(),
-            nbytes,
-            self.zst.0.avail_in
-        );
+        let bytes_written = self.out_buf.len() - self.zst.0.avail_out as usize;
+        self.inner.write_all(&self.out_buf[..bytes_written])?;
 
-        Ok(nbytes)
+        Ok(n_bytes)
     }
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
