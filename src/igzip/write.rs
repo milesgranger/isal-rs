@@ -213,20 +213,20 @@ impl<W: io::Write> Decoder<W> {
 
 impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.zst.0.avail_in = buf.len() as _;
-        self.zst.0.next_in = buf.as_ptr() as *mut _;
+        self.zst.state.avail_in = buf.len() as _;
+        self.zst.state.next_in = buf.as_ptr() as *mut _;
 
         let mut n_bytes = 0;
-        while self.zst.0.avail_in > 0 {
+        while self.zst.state.avail_in > 0 {
             loop {
                 self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
-                self.zst.0.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-                self.zst.0.avail_out = BUF_SIZE as _;
+                self.zst.state.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+                self.zst.state.avail_out = BUF_SIZE as _;
 
                 self.zst.step_inflate()?;
 
-                n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
+                n_bytes += BUF_SIZE - self.zst.state.avail_out as usize;
 
                 if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                     break;
@@ -238,7 +238,7 @@ impl<W: io::Write> io::Write for Decoder<W> {
         }
         self.inner.write_all(&self.out_buf[..n_bytes])?;
 
-        let nbytes = buf.len() - self.zst.0.avail_in as usize;
+        let nbytes = buf.len() - self.zst.state.avail_in as usize;
         Ok(nbytes)
     }
     fn flush(&mut self) -> io::Result<()> {

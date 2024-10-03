@@ -182,37 +182,38 @@ impl<R: io::Read> Decoder<R> {
 
 impl<R: io::Read> io::Read for Decoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.zst.0.next_out = buf.as_mut_ptr();
-        self.zst.0.avail_out = buf.len() as _;
+        self.zst.state.next_out = buf.as_mut_ptr();
+        self.zst.state.avail_out = buf.len() as _;
 
         // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
-        while self.zst.0.avail_out > 0 {
+        while self.zst.state.avail_out > 0 {
             // Keep in_buf full for avail_in
-            if self.zst.0.avail_in < self.in_buf.len() as _ {
+            if self.zst.state.avail_in < self.in_buf.len() as _ {
                 // if null, it's our first assignment of compressed data in
-                if self.zst.0.next_in.is_null() {
-                    self.zst.0.avail_in = self.inner.read(&mut self.in_buf)? as u32;
-                    self.zst.0.next_in = self.in_buf.as_mut_ptr();
+                if self.zst.state.next_in.is_null() {
+                    self.zst.state.avail_in = self.inner.read(&mut self.in_buf)? as u32;
+                    self.zst.state.next_in = self.in_buf.as_mut_ptr();
 
                 // Otherwise shift current available in section to the front and read more
                 } else {
-                    let idx =
-                        unsafe { self.zst.0.next_in.offset_from(self.in_buf.as_ptr()) as usize };
+                    let idx = unsafe {
+                        self.zst.state.next_in.offset_from(self.in_buf.as_ptr()) as usize
+                    };
                     self.in_buf
-                        .copy_within(idx..idx + self.zst.0.avail_in as usize, 0);
-                    self.zst.0.next_in = self.in_buf.as_mut_ptr();
+                        .copy_within(idx..idx + self.zst.state.avail_in as usize, 0);
+                    self.zst.state.next_in = self.in_buf.as_mut_ptr();
 
                     // read some more and update avail_in
                     let n = self
                         .inner
-                        .read(&mut self.in_buf[self.zst.0.avail_in as usize..])?;
-                    self.zst.0.avail_in += n as u32;
+                        .read(&mut self.in_buf[self.zst.state.avail_in as usize..])?;
+                    self.zst.state.avail_in += n as u32;
                 };
 
                 // Block finished, reset if we have more compressed data, otherwise exit
                 if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                    if self.zst.0.avail_in == 0 {
+                    if self.zst.state.avail_in == 0 {
                         break;
                     }
                     self.zst.reset();
@@ -220,7 +221,7 @@ impl<R: io::Read> io::Read for Decoder<R> {
             }
 
             self.zst.step_inflate()?;
-            n_bytes = buf.len() - self.zst.0.avail_out as usize;
+            n_bytes = buf.len() - self.zst.state.avail_out as usize;
         }
 
         Ok(n_bytes)

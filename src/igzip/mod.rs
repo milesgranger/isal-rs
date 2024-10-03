@@ -86,15 +86,15 @@ pub fn decompress<R: std::io::Read>(input: R, codec: Codec) -> Result<Vec<u8>> {
 #[inline(always)]
 pub fn decompress_into(input: &[u8], output: &mut [u8], codec: Codec) -> Result<usize> {
     let mut zst = InflateState::new(codec);
-    zst.0.avail_in = input.len() as _;
-    zst.0.next_in = input.as_ptr() as *mut _;
+    zst.state.avail_in = input.len() as _;
+    zst.state.next_in = input.as_ptr() as *mut _;
 
-    zst.0.avail_out = output.len() as _;
-    zst.0.next_out = output.as_mut_ptr();
+    zst.state.avail_out = output.len() as _;
+    zst.state.next_out = output.as_mut_ptr();
 
     zst.inflate_stateless()?;
 
-    Ok(zst.0.total_out as _)
+    Ok(zst.state.total_out as _)
 }
 
 /// Flush Flags
@@ -300,7 +300,9 @@ impl ZStream {
     }
 }
 
-pub(crate) struct InflateState(isal::inflate_state);
+pub(crate) struct InflateState {
+    state: isal::inflate_state,
+}
 
 impl InflateState {
     pub fn new(codec: Codec) -> Self {
@@ -308,19 +310,19 @@ impl InflateState {
         unsafe { isal::isal_inflate_init(uninit.as_mut_ptr()) };
         let mut state = unsafe { uninit.assume_init() };
         state.crc_flag = codec as _;
-        Self(state)
+        Self { state }
     }
 
     pub fn block_state(&self) -> u32 {
-        self.0.block_state
+        self.state.block_state
     }
 
     pub fn reset(&mut self) {
-        unsafe { isal::isal_inflate_reset(&mut self.0) }
+        unsafe { isal::isal_inflate_reset(&mut self.state) }
     }
 
     pub fn step_inflate(&mut self) -> Result<()> {
-        let ret = unsafe { isal::isal_inflate(&mut self.0) };
+        let ret = unsafe { isal::isal_inflate(&mut self.state) };
         match DecompCode::try_from(ret)? {
             DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
@@ -328,7 +330,7 @@ impl InflateState {
     }
 
     pub fn inflate_stateless(&mut self) -> Result<()> {
-        let ret = unsafe { isal::isal_inflate_stateless(&mut self.0) };
+        let ret = unsafe { isal::isal_inflate_stateless(&mut self.state) };
         match DecompCode::try_from(ret)? {
             DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
