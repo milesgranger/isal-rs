@@ -190,8 +190,7 @@ pub struct Decoder<W: io::Write> {
 
 impl<W: io::Write> Decoder<W> {
     pub fn new(writer: W, codec: Codec) -> Decoder<W> {
-        let mut zst = InflateState::new();
-        zst.0.crc_flag = codec as _;
+        let zst = InflateState::new(codec);
 
         Self {
             inner: writer,

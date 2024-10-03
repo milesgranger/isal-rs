@@ -85,11 +85,9 @@ pub fn decompress<R: std::io::Read>(input: R, codec: Codec) -> Result<Vec<u8>> {
 /// Decompress `input` into `output`, returning number of bytes written to output.
 #[inline(always)]
 pub fn decompress_into(input: &[u8], output: &mut [u8], codec: Codec) -> Result<usize> {
-    let mut zst = InflateState::new();
+    let mut zst = InflateState::new(codec);
     zst.0.avail_in = input.len() as _;
     zst.0.next_in = input.as_ptr() as *mut _;
-
-    zst.0.crc_flag = codec as _;
 
     zst.0.avail_out = output.len() as _;
     zst.0.next_out = output.as_mut_ptr();
@@ -327,10 +325,11 @@ impl ZStream {
 pub(crate) struct InflateState(isal::inflate_state);
 
 impl InflateState {
-    pub fn new() -> Self {
+    pub fn new(codec: Codec) -> Self {
         let mut uninit: mem::MaybeUninit<isal::inflate_state> = mem::MaybeUninit::uninit();
         unsafe { isal::isal_inflate_init(uninit.as_mut_ptr()) };
-        let state = unsafe { uninit.assume_init() };
+        let mut state = unsafe { uninit.assume_init() };
+        state.crc_flag = codec as _;
         Self(state)
     }
 

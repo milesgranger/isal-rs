@@ -159,8 +159,7 @@ pub struct Decoder<R: io::Read> {
 
 impl<R: io::Read> Decoder<R> {
     pub fn new(reader: R, codec: Codec) -> Decoder<R> {
-        let mut zst = InflateState::new();
-        zst.0.crc_flag = codec as _;
+        let zst = InflateState::new(codec);
 
         Self {
             inner: reader,
