@@ -92,29 +92,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u8], codec: Codec) -> Result<
     zst.0.avail_out = output.len() as _;
     zst.0.next_out = output.as_mut_ptr();
 
-    if codec == Codec::Zlib {
-        zst.0.crc_flag = 0; // zlib uses adler-32 checksum
-
-        let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> = mem::MaybeUninit::uninit();
-        unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
-        let mut hdr = unsafe { hdr.assume_init() };
-        read_zlib_header(&mut zst.0, &mut hdr)?;
-        zst.0.next_in = input[2..].as_ptr() as *mut _; // skip header now that it's read
-        zst.0.avail_in -= 4; // adler-32 checksum
-    }
-
     zst.inflate_stateless()?;
-
-    if codec == Codec::Zlib {
-        let decompressed = &output[..zst.0.total_out as _];
-        let c_adler32 =
-            unsafe { isal::isal_adler32(1, decompressed.as_ptr(), decompressed.len() as _) };
-        let bytes: [u8; 4] = (&input[input.len() - 4..]).try_into().unwrap();
-        let e_adler32 = u32::from_be_bytes(bytes);
-        if c_adler32 != e_adler32 {
-            return Err(Error::DecompressionError(DecompCode::IncorrectChecksum));
-        }
-    }
 
     Ok(zst.0.total_out as _)
 }
@@ -355,37 +333,6 @@ impl InflateState {
             DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
         }
-    }
-}
-
-/// Read and return gzip header information
-///
-/// On entry state must be initialized and next_in pointing to a gzip compressed
-/// buffer. The buffers gz_hdr->extra, gz_hdr->name, gz_hdr->comments and the
-/// buffer lengths must be set to record the corresponding field, or set to NULL
-/// to disregard that gzip header information. If one of these buffers overflows,
-/// the user can reallocate a larger buffer and call this function again to
-/// continue reading the header information.
-#[inline(always)]
-pub(crate) fn read_gzip_header(
-    zst: &mut isal::inflate_state,
-    gz_hdr: &mut isal::isal_gzip_header,
-) -> Result<()> {
-    let ret = unsafe { isal::isal_read_gzip_header(zst as *mut _, gz_hdr as *mut _) };
-    match DecompCode::try_from(ret)? {
-        DecompCode::DecompOk => Ok(()),
-        r => Err(Error::DecompressionError(r)),
-    }
-}
-#[inline(always)]
-pub(crate) fn read_zlib_header(
-    zst: &mut isal::inflate_state,
-    gz_hdr: &mut isal::isal_zlib_header,
-) -> Result<()> {
-    let ret = unsafe { isal::isal_read_zlib_header(zst as *mut _, gz_hdr as *mut _) };
-    match DecompCode::try_from(ret)? {
-        DecompCode::DecompOk => Ok(()),
-        r => Err(Error::DecompressionError(r)),
     }
 }
 
