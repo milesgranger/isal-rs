@@ -450,57 +450,17 @@ pub mod tests {
                         mod $lvl_name {
                             use super::*;
 
+                            // Test de/compress_into functions or module level stuff
                             macro_rules! test_data_size {
                                 ($size:ident) => {
                                     mod $size {
                                         use super::*;
 
                                         #[test]
-                                        fn basic_compress_into() {
-                                            let data = $size();
-                                            let mut output = vec![0_u8; data.len() + 50];
-                                            let _nbytes = compress_into(
-                                                data.as_slice(),
-                                                &mut output,
-                                                $lvl,
-                                                $codec,
-                                            )
-                                            .unwrap();
-                                        }
-                                        #[test]
-                                        fn basic_compress() {
-                                            let data = $size();
-                                            let _compressed =
-                                                compress(data.as_slice(), $lvl, $codec).unwrap();
-                                        }
-                                        #[test]
-                                        fn basic_decompress() {
-                                            /* Decompress data which is larger than BUF_SIZE */
-                                            let data = $size();
-                                            let compressed =
-                                                compress(data.as_slice(), $lvl, $codec).unwrap();
-                                            let decompressed =
-                                                decompress(compressed.as_slice(), $codec).unwrap();
-                                            assert_eq!(data.len(), decompressed.len());
-                                            assert!(same_same(&data, &decompressed));
-                                        }
-                                        #[test]
-                                        fn basic_round_trip() {
-                                            let data = $size();
-                                            let compressed =
-                                                compress(data.as_slice(), $lvl, $codec).unwrap();
-                                            let decompressed =
-                                                decompress(compressed.as_slice(), $codec).unwrap();
-                                            assert!(same_same(&decompressed, data.as_slice()));
-                                        }
-                                        #[test]
                                         fn basic_round_trip_into() {
                                             let data = $size();
 
-                                            let compressed_len =
-                                                compress(data.as_slice(), $lvl, $codec)
-                                                    .unwrap()
-                                                    .len();
+                                            let compressed_len = compress(data.as_slice(), $lvl, $codec).unwrap().len();
                                             let decompressed_len = data.len();
 
                                             let mut compressed = vec![0; compressed_len * 2];
@@ -526,6 +486,18 @@ pub mod tests {
                                             ));
                                         }
                                         #[test]
+                                        fn basic_compress_into() {
+                                            let data = $size();
+                                            let mut output = vec![0_u8; data.len() + 50];
+                                            let _nbytes = compress_into(
+                                                data.as_slice(),
+                                                &mut output,
+                                                $lvl,
+                                                $codec,
+                                            )
+                                            .unwrap();
+                                        }
+                                        #[test]
                                         fn flate2_zlib_compat_compress_into() {
                                             let data = $size();
 
@@ -545,40 +517,6 @@ pub mod tests {
                                             assert!(same_same(&data, decompressed.as_slice()));
                                         }
                                         #[test]
-                                        fn flate2_zlib_compat_compress() {
-                                            let data = $size();
-
-                                            let compressed =
-                                                compress(data.as_slice(), $lvl, $codec).unwrap();
-
-                                            let decompressed =
-                                                flate2_decompress(&compressed, $codec);
-
-                                            assert_eq!(data.len(), decompressed.len());
-                                            assert!(same_same(&data, &decompressed));
-                                        }
-                                        #[test]
-                                        fn flate2_zlib_compat_decompress() {
-                                            let data = $size();
-                                            let compressed = flate2_compress(&data, $codec, $lvl);
-
-                                            // TODO: incompat only when level 0 and zlib: flate2 stores it
-                                            //       _much_ differently; just header, trailer and byte-for-byte
-                                            //       the same as input. We store it the same as ISA-L (and same as python-isal)
-                                            //       which we can decode our own, but cannot decode what's produced by flate2
-                                            //       but should be able to with a bit more manual work in the decoder
-                                            if $lvl == CompressionLevel::Zero && $codec == Codec::Zlib {
-                                                eprintln!("Warning: known incompatibility decoding flate2 level zero w/ zlib");
-                                                return;
-                                            }
-
-                                            let decompressed =
-                                                decompress(compressed.as_slice(), $codec).unwrap();
-
-                                            assert_eq!(data.len(), decompressed.len());
-                                            assert!(same_same(&data, &decompressed));
-                                        }
-                                        #[test]
                                         fn flate2_zlib_compat_decompress_into() {
                                             let data = $size();
                                             let compressed = flate2_compress(&data, $codec, $lvl);
@@ -589,95 +527,155 @@ pub mod tests {
                                             assert_eq!(n, data.len());
                                             assert!(same_same(&data, &decompressed[..n]));
                                         }
-                                        #[test]
-                                        fn basic_decompress_multi_stream() {
-
-                                            // multi-stream only supported for gzip
-                                            if $codec != Codec::Gzip {
-                                                return;
-                                            }
-
-                                            let data = $size();
-
-                                            let mut compressed = compress(data.as_slice(), $lvl, $codec).unwrap();
-                                            compressed.extend(compressed.clone());
-
-                                            let decompressed = decompress(compressed.as_slice(), $codec).unwrap();
-
-                                            let mut expected = data.clone();
-                                            expected.extend(data.clone());
-
-                                            assert_eq!(expected.len(), decompressed.len());
-                                            assert!(same_same(&expected, &decompressed));
-                                        }
 
                                         // Test read Encoder/Decoder
-                                        mod read {
-                                            use super::*;
+                                        macro_rules! test_read_or_write {
+                                            ($op:ident)  => {
+                                                mod $op {
+                                                    use super::*;
+                                                    use std::io::{Write};
+                                                    use std::io;
 
-                                            use crate::igzip::read::{Encoder, Decoder};
+                                                    // Wrapper to normal compress which is implemented using Read Encoder
+                                                    // but could just as well use Write Encoder.
+                                                    fn compress<R: io::Read>(mut data: R, lvl: CompressionLevel, codec: Codec) -> Vec<u8> {
+                                                        if stringify!($op) == "read" {
+                                                            use crate::igzip::read::{Encoder};
 
-                                            #[test]
-                                            fn roundtrip() {
-                                                let data = $size();
-                                                let mut encoder = Encoder::new(data.as_slice(), $lvl, $codec);
-                                                let mut output = vec![];
+                                                            let mut output = vec![];
+                                                            let mut encoder = Encoder::new(data, lvl, codec);
+                                                            io::copy(&mut encoder, &mut output).unwrap();
+                                                            output
+                                                        } else if stringify!($op) == "write" {
+                                                            use crate::igzip::write::{Encoder};
 
-                                                let n = io::copy(&mut encoder, &mut output).unwrap();
-                                                assert_eq!(n as usize, output.len());
+                                                            let mut output = vec![];
+                                                            let mut encoder = Encoder::new(&mut output, lvl, codec);
+                                                            io::copy(&mut data, &mut encoder).unwrap();
+                                                            encoder.flush().unwrap();
+                                                            output
+                                                        } else {
+                                                            panic!("Unknown op: {}", stringify!($op));
+                                                        }
+                                                    }
+                                                    // Wrapper to normal decompress which is implemented using Read Encoder
+                                                    // but could just as well use Write Encoder.
+                                                    fn decompress<R: io::Read>(mut data: R, codec: Codec) -> Vec<u8> {
+                                                        if stringify!($op) == "read" {
+                                                            use crate::igzip::read::{Decoder};
 
-                                                let mut decoder = Decoder::new(output.as_slice(), $codec);
-                                                let mut decompressed = vec![];
-                                                let nbytes = io::copy(&mut decoder, &mut decompressed).unwrap();
+                                                            let mut output = vec![];
+                                                            let mut decoder = Decoder::new(data, codec);
+                                                            io::copy(&mut decoder, &mut output).unwrap();
+                                                            output
+                                                        } else if stringify!($op) == "write" {
+                                                            use crate::igzip::write::{Decoder};
 
-                                                assert_eq!(nbytes as usize, data.len());
-                                                assert!(same_same(&data, &decompressed));
+                                                            let mut output = vec![];
+                                                            let mut decoder = Decoder::new(&mut output, codec);
+                                                            io::copy(&mut data, &mut decoder).unwrap();
+                                                            decoder.flush().unwrap();
+                                                            output
+                                                        } else {
+                                                            panic!("Unknown op: {}", stringify!($op));
+                                                        }
+                                                    }
+
+                                                    #[test]
+                                                    fn flate2_zlib_compat_compress() {
+                                                        let data = $size();
+
+                                                        let compressed = compress(data.as_slice(), $lvl, $codec);
+                                                        let decompressed = flate2_decompress(&compressed, $codec);
+
+                                                        assert_eq!(data.len(), decompressed.len());
+                                                        assert!(same_same(&data, &decompressed));
+                                                    }
+                                                    #[test]
+                                                    fn flate2_zlib_compat_decompress() {
+                                                        let data = $size();
+                                                        let compressed = flate2_compress(&data, $codec, $lvl);
+
+                                                        // TODO: incompat only when level 0 and zlib: flate2 stores it
+                                                        //       _much_ differently; just header, trailer and byte-for-byte
+                                                        //       the same as input. We store it the same as ISA-L (and same as python-isal)
+                                                        //       which we can decode our own, but cannot decode what's produced by flate2
+                                                        //       but should be able to with a bit more manual work in the decoder
+                                                        if $lvl == CompressionLevel::Zero && $codec == Codec::Zlib {
+                                                            eprintln!("Warning: known incompatibility decoding flate2 level zero w/ zlib");
+                                                            return;
+                                                        }
+
+                                                        let decompressed = decompress(compressed.as_slice(), $codec);
+
+                                                        assert_eq!(data.len(), decompressed.len());
+                                                        assert!(same_same(&data, &decompressed));
+                                                    }
+                                                    #[test]
+                                                    fn basic_decompress_multi_stream() {
+
+                                                        // multi-stream only supported for gzip
+                                                        if $codec != Codec::Gzip {
+                                                            return;
+                                                        }
+
+                                                        let data = $size();
+
+                                                        let mut compressed = compress(data.as_slice(), $lvl, $codec);
+                                                        compressed.extend(compressed.clone());
+
+                                                        let decompressed = decompress(compressed.as_slice(), $codec);
+
+                                                        let mut expected = data.clone();
+                                                        expected.extend(data.clone());
+
+                                                        assert_eq!(expected.len(), decompressed.len());
+                                                        assert!(same_same(&expected, &decompressed));
+                                                    }
+
+                                                    #[test]
+                                                    fn basic_compress() {
+                                                        let data = $size();
+                                                        let _compressed = compress(data.as_slice(), $lvl, $codec);
+                                                    }
+                                                    #[test]
+                                                    fn basic_decompress() {
+                                                        /* Decompress data which is larger than BUF_SIZE */
+                                                        let data = $size();
+                                                        let compressed =
+                                                            compress(data.as_slice(), $lvl, $codec);
+                                                        let decompressed =
+                                                            decompress(compressed.as_slice(), $codec);
+                                                        assert_eq!(data.len(), decompressed.len());
+                                                        assert!(same_same(&data, &decompressed));
+                                                    }
+                                                    #[test]
+                                                    fn basic_round_trip() {
+                                                        let data = $size();
+                                                        let compressed =
+                                                            compress(data.as_slice(), $lvl, $codec);
+                                                        let decompressed =
+                                                            decompress(compressed.as_slice(), $codec);
+                                                        assert!(same_same(&decompressed, data.as_slice()));
+                                                    }
+                                                }
                                             }
-
-                                            #[test]
-                                            fn basic_compress() {
-                                                let input = $size();
-                                                let mut encoder = Encoder::new(input.as_slice(), $lvl, $codec);
-                                                let mut output = vec![];
-
-                                                let n = io::copy(&mut encoder, &mut output).unwrap() as usize;
-                                                let decompressed = decompress(&output[..n], $codec).unwrap();
-
-                                                assert_eq!(input.len(), decompressed.len());
-                                                assert!(same_same(&input, &decompressed));
-                                            }
-
-                                            #[test]
-                                            fn basic_decompress() {
-                                                let input = $size();
-                                                let compressed = compress(input.as_slice(), $lvl, $codec).unwrap();
-
-                                                let mut decoder = Decoder::new(compressed.as_slice(), $codec);
-                                                let mut decompressed = vec![];
-
-                                                let n = io::copy(&mut decoder, &mut decompressed).unwrap() as usize;
-                                                assert_eq!(n, decompressed.len());
-                                                assert_eq!(input.len(), decompressed.len());
-                                                assert!(same_same(&input, decompressed.as_slice()));
-                                            }
-
                                         }
+                                        test_read_or_write!(read);
+                                        test_read_or_write!(write);
                                     }
-
-                                };
+                                }
                             }
-
                             test_data_size!(get_small_data);
                             test_data_size!(gen_large_data);
                         }
-                    };
+                    }
                 }
-
                 test_compression_level!(level_three, CompressionLevel::Three);
                 test_compression_level!(level_one, CompressionLevel::One);
                 test_compression_level!(level_zero, CompressionLevel::Zero);
             }
-        };
+        }
     }
 
     test_codec!(gzip, Codec::Gzip);
