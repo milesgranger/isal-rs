@@ -61,7 +61,6 @@ impl<R: io::Read> Encoder<R> {
 }
 
 impl<R: io::Read> io::Read for Encoder<R> {
-    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
         self.stream.stream.avail_out = buf.len() as _;
@@ -75,18 +74,34 @@ impl<R: io::Read> io::Read for Encoder<R> {
                 self.stream.stream.next_in = self.in_buf.as_mut_ptr();
                 self.stream.stream.end_of_stream = (self.stream.stream.avail_in == 0) as _;
             } else {
-                let idx = unsafe {
-                    self.stream.stream.next_in.offset_from(self.in_buf.as_ptr()) as usize
-                };
-                self.in_buf
-                    .copy_within(idx..idx + self.stream.stream.avail_in as usize, 0);
-                let avail_in = self
-                    .inner
-                    .read(&mut self.in_buf[self.stream.stream.avail_in as usize..])?
-                    as usize;
-                self.stream.stream.avail_in += avail_in as u32;
-                self.stream.stream.end_of_stream = (avail_in == 0) as _;
-                self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+                let ptr = self.stream.stream.next_in;
+                let base_ptr = self.in_buf.as_mut_ptr();
+                if ptr < base_ptr || ptr > unsafe { base_ptr.add(self.in_buf.len()) } {
+                    self.stream.stream.avail_in = self.inner.read(&mut self.in_buf)? as _;
+                    self.stream.stream.next_in = self.in_buf.as_mut_ptr();
+                    self.stream.stream.end_of_stream = (self.stream.stream.avail_in == 0) as _;
+                } else {
+                    let idx =
+                        unsafe { self.stream.stream.next_in.offset_from(self.in_buf.as_ptr()) };
+                    if idx < 0
+                        || idx + self.stream.stream.avail_in as isize > self.in_buf.len() as isize
+                    {
+                        panic!(
+                            "Index is probably wrong: {}, avail_in: {}, avail_out: {}",
+                            idx, self.stream.stream.avail_in, self.stream.stream.avail_out
+                        );
+                    }
+                    let idx = idx as usize;
+                    self.in_buf
+                        .copy_within(idx..idx + self.stream.stream.avail_in as usize, 0);
+                    let avail_in = self
+                        .inner
+                        .read(&mut self.in_buf[self.stream.stream.avail_in as usize..])?
+                        as usize;
+                    self.stream.stream.avail_in += avail_in as u32;
+                    self.stream.stream.end_of_stream = (avail_in == 0) as _;
+                    self.stream.stream.next_in = self.in_buf[0..].as_mut_ptr();
+                }
             }
 
             // If it's zstate end, we can exit early if no more avail in, otherwise start next by resetting
