@@ -221,39 +221,57 @@ impl<W: io::Write> io::Write for Decoder<W> {
             self.zst.block_state(),
             buf.len()
         );
-
+        let state = self.zst.block_state();
+        if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+            self.zst.reset();
+        }
         self.zst.0.avail_in = buf.len() as _;
         self.zst.0.next_in = buf.as_ptr() as *mut _;
 
-        while self.zst.0.avail_in > 0 {
+        if self.zst.0.next_out.is_null() {
             self.zst.0.next_out = self.out_buf.as_mut_ptr();
             self.zst.0.avail_out = self.out_buf.len() as _;
-
-            println!(
-                "\tOuter loop state before deflate: {}",
-                self.zst.0.block_state
-            );
-            while self.zst.0.avail_out > 0 {
-                self.zst.step_inflate()?;
-                let state = self.zst.block_state();
-                println!("\tInner loop state: {}", state);
-                if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                    self.zst.reset();
-                }
-                if self.zst.0.avail_in == 0
-                    && (state == isal::isal_block_state_ISAL_BLOCK_HDR
-                        || state == isal::isal_block_state_ISAL_BLOCK_NEW_HDR)
-                {
-                    break;
-                }
-            }
-            println!(
-                "\tOuter loop state after deflate: {}",
-                self.zst.block_state()
-            );
-            let nbytes = self.out_buf.len() - self.zst.0.avail_out as usize;
-            self.inner.write_all(&self.out_buf[..nbytes])?;
+        } else {
+            let idx = unsafe { self.zst.0.next_out.offset_from(self.out_buf.as_ptr()) as usize };
+            let len = self.out_buf.len();
+            self.out_buf.copy_within(idx..len, 0);
+            self.zst.0.next_out = self.out_buf.as_mut_ptr();
+            self.zst.0.avail_out = self.out_buf.len() as _;
         }
+
+        // println!(
+        //     "\tOuter loop state before deflate: {}",
+        //     self.zst.0.block_state
+        // );
+        loop {
+            self.zst.step_inflate()?;
+
+            if self.zst.0.block_state != isal::isal_block_state_ISAL_BLOCK_CODED {
+                break;
+            } else if self.zst.0.avail_out == 0
+                && self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_CODED
+            {
+                let nbytes = self.out_buf.len() - self.zst.0.avail_out as usize;
+                self.inner.write_all(&self.out_buf[..nbytes])?;
+                self.zst.0.next_out = self.out_buf.as_mut_ptr();
+                self.zst.0.avail_out = self.out_buf.len() as _;
+            } else if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                self.zst.reset();
+            } else {
+                println!(
+                    "Not breaking w/ state: {}, avail_in: {}, avail_out: {}",
+                    self.zst.block_state(),
+                    self.zst.0.avail_in,
+                    self.zst.0.avail_out
+                )
+            }
+        }
+        // println!(
+        //     "\tOuter loop state after deflate: {}",
+        //     self.zst.block_state()
+        // );
+        let nbytes = self.out_buf.len() - self.zst.0.avail_out as usize;
+        self.inner.write_all(&self.out_buf[..nbytes])?;
 
         let nbytes = buf.len() - self.zst.0.avail_in as usize;
         println!(
