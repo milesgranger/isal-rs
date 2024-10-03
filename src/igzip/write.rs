@@ -186,8 +186,8 @@ pub struct Decoder<W: io::Write> {
     out_buf: Vec<u8>,
     dsts: usize,
     dste: usize,
+    #[allow(dead_code)]
     codec: Codec,
-    adler32: u32,
 }
 
 impl<W: io::Write> Decoder<W> {
@@ -202,7 +202,6 @@ impl<W: io::Write> Decoder<W> {
             dste: 0,
             dsts: 0,
             codec,
-            adler32: 1,
         }
     }
 
@@ -238,85 +237,17 @@ impl<W: io::Write> io::Write for Decoder<W> {
 
         let mut n_bytes = 0;
         while self.zst.0.avail_in > 0 {
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
-                // Read gzip header
-                if self.codec == Codec::Gzip {
-                    // Read this member's gzip header
-                    let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
-                        mem::MaybeUninit::uninit();
-                    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
-                    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
-                    read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
-
-                // Read zlib header
-                } else if self.codec == Codec::Zlib {
-                    self.zst.0.crc_flag = 0; // zlib uses adler-32
-
-                    let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
-                        mem::MaybeUninit::uninit();
-                    unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
-                    let mut hdr = unsafe { hdr.assume_init() };
-                    read_zlib_header(&mut self.zst.0, &mut hdr)?;
-                    self.zst.0.next_in = buf[2..].as_ptr() as *mut _; // skip header now that it's read
-                                                                      // self.zst.0.avail_in -= 4; // skip adler-32 trailer
-                }
-            }
-
             // decompress member
-            loop {
-                self.out_buf.resize(n_bytes + BUF_SIZE, 0);
+            self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
-                self.zst.0.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-                self.zst.0.avail_out = BUF_SIZE as _;
+            self.zst.0.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+            self.zst.0.avail_out = BUF_SIZE as _;
 
-                self.zst.step_inflate()?;
+            self.zst.step_inflate()?;
 
-                n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
-
-                let state = self.zst.block_state();
-                match self.codec {
-                    Codec::Deflate | Codec::Zlib => {
-                        // On block finished we're done done w/ the block,
-                        // on block coded, we need to move onto the next input buffer
-                        if state == isal::isal_block_state_ISAL_BLOCK_FINISH
-                            || state == isal::isal_block_state_ISAL_BLOCK_CODED
-                        {
-                            break;
-                        }
-                    }
-                    Codec::Gzip => {
-                        if state == isal::isal_block_state_ISAL_BLOCK_CODED
-                            || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
-                            || state == isal::isal_block_state_ISAL_BLOCK_HDR
-                            || state == isal::isal_block_state_ISAL_BLOCK_FINISH
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
+            n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
             if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
-            }
-        }
-        // zlib adler32
-        if self.codec == Codec::Zlib && buf.len() > 4 {
-            // Update adler
-            self.adler32 =
-                unsafe { isal::isal_adler32(self.adler32, self.out_buf.as_ptr(), n_bytes as _) };
-
-            // when end of block, verify adler matches (state reset above on block finish)
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
-                // unwrap ok, ensured buf len > 4 above
-                debug_assert!(buf.len() > 4);
-                let bytes: [u8; 4] = (buf[buf.len() - 4..buf.len()]).try_into().unwrap();
-                let expected_adler32 = u32::from_be_bytes(bytes);
-                if self.adler32 != expected_adler32 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        Error::DecompressionError(DecompCode::IncorrectChecksum),
-                    ));
-                }
             }
         }
         self.out_buf.truncate(n_bytes);
