@@ -212,6 +212,7 @@ impl TryFrom<i32> for DecompCode {
     }
 }
 
+/// Available compression levels
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CompressionLevel {
@@ -219,6 +220,22 @@ pub enum CompressionLevel {
     One = 1,
     Three = 3,
 }
+
+// mimic flate2 api
+impl CompressionLevel {
+    pub fn best() -> Self {
+        Self::Three
+    }
+    pub fn fast() -> Self {
+        Self::One
+    }
+    pub fn none() -> Self {
+        Self::Zero
+    }
+}
+
+/// Compatability with flate2
+pub type Compression = CompressionLevel;
 
 impl TryFrom<isize> for CompressionLevel {
     type Error = crate::error::Error;
@@ -238,12 +255,12 @@ impl TryFrom<isize> for CompressionLevel {
     }
 }
 
-pub enum ZStreamKind {
+pub(crate) enum ZStreamKind {
     Stateful,
     Stateless,
 }
 
-pub struct ZStream {
+pub(crate) struct ZStream {
     stream: isal::isal_zstream,
     #[allow(dead_code)] // Pointer used by stream, kept here to release when dropped
     level_buf: Vec<u8>,
@@ -307,7 +324,7 @@ impl ZStream {
     }
 }
 
-pub struct InflateState(isal::inflate_state);
+pub(crate) struct InflateState(isal::inflate_state);
 
 impl InflateState {
     pub fn new() -> Self {
@@ -351,7 +368,7 @@ impl InflateState {
 /// the user can reallocate a larger buffer and call this function again to
 /// continue reading the header information.
 #[inline(always)]
-pub fn read_gzip_header(
+pub(crate) fn read_gzip_header(
     zst: &mut isal::inflate_state,
     gz_hdr: &mut isal::isal_gzip_header,
 ) -> Result<()> {
@@ -362,7 +379,7 @@ pub fn read_gzip_header(
     }
 }
 #[inline(always)]
-pub fn read_zlib_header(
+pub(crate) fn read_zlib_header(
     zst: &mut isal::inflate_state,
     gz_hdr: &mut isal::isal_zlib_header,
 ) -> Result<()> {
