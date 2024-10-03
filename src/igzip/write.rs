@@ -184,8 +184,6 @@ pub struct Decoder<W: io::Write> {
     inner: W,
     zst: InflateState,
     out_buf: Vec<u8>,
-    dsts: usize,
-    dste: usize,
     #[allow(dead_code)]
     codec: Codec,
 }
@@ -199,8 +197,6 @@ impl<W: io::Write> Decoder<W> {
             inner: writer,
             zst,
             out_buf: Vec::with_capacity(BUF_SIZE),
-            dste: 0,
-            dsts: 0,
             codec,
         }
     }
@@ -214,30 +210,15 @@ impl<W: io::Write> Decoder<W> {
     pub fn get_ref(&self) -> &W {
         &self.inner
     }
-
-    #[inline(always)]
-    fn write_from_out_buf(&mut self) -> io::Result<usize> {
-        let count = self.dste - self.dsts;
-        self.inner
-            .write_all(&mut self.out_buf[self.dsts..self.dste])?;
-        self.out_buf.truncate(0);
-        self.dsts = 0;
-        self.dste = 0;
-        Ok(count)
-    }
 }
 
 impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Check if there is data left in out_buf, otherwise refill; if end state, return 0
-        // Read out next buf len worth to compress; filling intermediate out_buf
-        debug_assert_eq!(self.zst.0.avail_in, 0);
         self.zst.0.avail_in = buf.len() as _;
         self.zst.0.next_in = buf.as_ptr() as *mut _;
 
         let mut n_bytes = 0;
         while self.zst.0.avail_in > 0 {
-            // decompress member
             loop {
                 self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
@@ -248,29 +229,20 @@ impl<W: io::Write> io::Write for Decoder<W> {
 
                 n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
 
-                let state = self.zst.block_state();
-                if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                     break;
                 }
             }
-            if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
             }
         }
-        self.out_buf.truncate(n_bytes);
-        self.dste = n_bytes;
-        self.dsts = 0;
-        self.write_from_out_buf()?;
+        self.inner.write_all(&self.out_buf[..n_bytes])?;
 
         let nbytes = buf.len() - self.zst.0.avail_in as usize;
         Ok(nbytes)
     }
     fn flush(&mut self) -> io::Result<()> {
-        loop {
-            if self.write_from_out_buf()? == 0 {
-                break;
-            }
-        }
         self.inner.flush()
     }
 }
