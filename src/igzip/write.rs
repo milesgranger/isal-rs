@@ -186,8 +186,8 @@ pub struct Decoder<W: io::Write> {
     out_buf: Vec<u8>,
     dsts: usize,
     dste: usize,
+    #[allow(dead_code)]
     codec: Codec,
-    in_buf: Vec<u8>, // Only used for zlib and deflate
 }
 
 impl<W: io::Write> Decoder<W> {
@@ -199,7 +199,6 @@ impl<W: io::Write> Decoder<W> {
             inner: writer,
             zst,
             out_buf: Vec::with_capacity(BUF_SIZE),
-            in_buf: Vec::new(),
             dste: 0,
             dsts: 0,
             codec,
@@ -233,10 +232,7 @@ impl<W: io::Write> io::Write for Decoder<W> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
         // Read out next buf len worth to compress; filling intermediate out_buf
         debug_assert_eq!(self.zst.0.avail_in, 0);
-        let start = self.in_buf.len();
-        self.in_buf.resize(start + buf.len(), 0);
-        self.in_buf[start..].copy_from_slice(buf);
-        self.zst.0.avail_in = self.in_buf.len() as _;
+        self.zst.0.avail_in = buf.len() as _;
         self.zst.0.next_in = buf.as_ptr() as *mut _;
 
         let mut n_bytes = 0;
@@ -267,15 +263,9 @@ impl<W: io::Write> io::Write for Decoder<W> {
         self.write_from_out_buf()?;
 
         let nbytes = buf.len() - self.zst.0.avail_in as usize;
-        self.in_buf.resize(buf.len() - nbytes, 0);
-        self.in_buf[..].copy_from_slice(&buf[nbytes..]);
-
         Ok(nbytes)
     }
     fn flush(&mut self) -> io::Result<()> {
-        if self.in_buf.len() > 0 {
-            panic!("In buf not empty!");
-        }
         loop {
             if self.write_from_out_buf()? == 0 {
                 break;
