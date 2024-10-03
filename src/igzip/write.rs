@@ -183,9 +183,7 @@ impl<W: io::Write> io::Write for Encoder<W> {
 pub struct Decoder<W: io::Write> {
     inner: W,
     zst: InflateState,
-    out_buf: Vec<u8>,
-    dsts: usize,
-    dste: usize,
+    out_buf: [u8; BUF_SIZE],
     #[allow(dead_code)]
     codec: Codec,
 }
@@ -198,9 +196,7 @@ impl<W: io::Write> Decoder<W> {
         Self {
             inner: writer,
             zst,
-            out_buf: Vec::with_capacity(BUF_SIZE),
-            dste: 0,
-            dsts: 0,
+            out_buf: [0u8; BUF_SIZE],
             codec,
         }
     }
@@ -214,55 +210,62 @@ impl<W: io::Write> Decoder<W> {
     pub fn get_ref(&self) -> &W {
         &self.inner
     }
-
-    #[inline(always)]
-    fn write_from_out_buf(&mut self) -> io::Result<usize> {
-        let count = self.dste - self.dsts;
-        self.inner
-            .write_all(&mut self.out_buf[self.dsts..self.dste])?;
-        self.out_buf.truncate(0);
-        self.dsts = 0;
-        self.dste = 0;
-        Ok(count)
-    }
 }
 
 impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // Check if there is data left in out_buf, otherwise refill; if end state, return 0
         // Read out next buf len worth to compress; filling intermediate out_buf
-        debug_assert_eq!(self.zst.0.avail_in, 0);
+        println!(
+            "Entering w/ state: {}, buf in: {}",
+            self.zst.block_state(),
+            buf.len()
+        );
+
         self.zst.0.avail_in = buf.len() as _;
         self.zst.0.next_in = buf.as_ptr() as *mut _;
 
-        let mut n_bytes = 0;
         while self.zst.0.avail_in > 0 {
-            // decompress member
-            self.out_buf.resize(n_bytes + BUF_SIZE, 0);
+            self.zst.0.next_out = self.out_buf.as_mut_ptr();
+            self.zst.0.avail_out = self.out_buf.len() as _;
 
-            self.zst.0.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
-            self.zst.0.avail_out = BUF_SIZE as _;
-
-            self.zst.step_inflate()?;
-
-            n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
-            if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
-                self.zst.reset();
+            println!(
+                "\tOuter loop state before deflate: {}",
+                self.zst.0.block_state
+            );
+            while self.zst.0.avail_out > 0 {
+                self.zst.step_inflate()?;
+                let state = self.zst.block_state();
+                println!("\tInner loop state: {}", state);
+                if state == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                    self.zst.reset();
+                }
+                if self.zst.0.avail_in == 0
+                    && (state == isal::isal_block_state_ISAL_BLOCK_HDR
+                        || state == isal::isal_block_state_ISAL_BLOCK_NEW_HDR)
+                {
+                    break;
+                }
             }
+            println!(
+                "\tOuter loop state after deflate: {}",
+                self.zst.block_state()
+            );
+            let nbytes = self.out_buf.len() - self.zst.0.avail_out as usize;
+            self.inner.write_all(&self.out_buf[..nbytes])?;
         }
-        self.out_buf.truncate(n_bytes);
-        self.dste = n_bytes;
-        self.dsts = 0;
-        self.write_from_out_buf()?;
 
-        Ok(buf.len())
+        let nbytes = buf.len() - self.zst.0.avail_in as usize;
+        println!(
+            "State {}, nbytes: {}, avail_in: {}",
+            self.zst.block_state(),
+            nbytes,
+            self.zst.0.avail_in
+        );
+
+        Ok(nbytes)
     }
     fn flush(&mut self) -> io::Result<()> {
-        loop {
-            if self.write_from_out_buf()? == 0 {
-                break;
-            }
-        }
         self.inner.flush()
     }
 }
