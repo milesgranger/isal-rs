@@ -92,34 +92,14 @@ impl<R: io::Read> io::Read for Encoder<R> {
             // If it's zstate end, we can exit early if no more avail in, otherwise start next by resetting
             if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
                 if self.stream.stream.avail_in == 0 {
-                    println!(
-                        "Early exit: {}, avail_in: {}, avail_out: {}",
-                        self.stream.stream.internal_state.state,
-                        self.stream.stream.avail_in,
-                        self.stream.stream.avail_out
-                    );
                     return Ok(nbytes);
                 } else {
                     unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
                 }
             }
 
-            println!(
-                "Before deflate: {}, avail_in: {}, avail_out: {}",
-                self.stream.stream.internal_state.state,
-                self.stream.stream.avail_in,
-                self.stream.stream.avail_out
-            );
-
             self.stream.deflate()?;
             nbytes = buf.len() - self.stream.stream.avail_out as usize;
-            println!(
-                "\tAfter deflate: {}, avail_in: {}, avail_out: {}, nbytes: {}",
-                self.stream.stream.internal_state.state,
-                self.stream.stream.avail_in,
-                self.stream.stream.avail_out,
-                nbytes
-            );
         }
 
         Ok(nbytes)

@@ -10,7 +10,12 @@ documentation = "https://docs.rs/isal-rs"
 homepage = "https://github.com/milesgranger/isal-rs"
 repository = "https://github.com/milesgranger/isal-rs"
 keywords = ["isal", "isa-l", "igzip", "deflate", "zlib"]
-exclude = ["benches/"]
+exclude = [
+  ".gitignore",
+  ".gitmodules",
+  ".github/",
+  "benches/",
+]
 
 [lib]
 name = "isal"
