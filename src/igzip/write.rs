@@ -183,9 +183,11 @@ impl<W: io::Write> io::Write for Encoder<W> {
 pub struct Decoder<W: io::Write> {
     inner: W,
     zst: InflateState,
-    out_buf: [u8; BUF_SIZE * 4],
-    #[allow(dead_code)]
+    out_buf: Vec<u8>,
+    dsts: usize,
+    dste: usize,
     codec: Codec,
+    adler32: u32,
 }
 
 impl<W: io::Write> Decoder<W> {
@@ -196,8 +198,11 @@ impl<W: io::Write> Decoder<W> {
         Self {
             inner: writer,
             zst,
-            out_buf: [0u8; BUF_SIZE * 4],
+            out_buf: Vec::with_capacity(BUF_SIZE),
+            dste: 0,
+            dsts: 0,
             codec,
+            adler32: 1,
         }
     }
 
@@ -210,44 +215,123 @@ impl<W: io::Write> Decoder<W> {
     pub fn get_ref(&self) -> &W {
         &self.inner
     }
+
+    #[inline(always)]
+    fn write_from_out_buf(&mut self) -> io::Result<usize> {
+        let count = self.dste - self.dsts;
+        self.inner
+            .write_all(&mut self.out_buf[self.dsts..self.dste])?;
+        self.out_buf.truncate(0);
+        self.dsts = 0;
+        self.dste = 0;
+        Ok(count)
+    }
 }
 
 impl<W: io::Write> io::Write for Decoder<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.zst.0.next_in = buf.as_ptr() as *mut _;
+        // Check if there is data left in out_buf, otherwise refill; if end state, return 0
+        // Read out next buf len worth to compress; filling intermediate out_buf
+        debug_assert_eq!(self.zst.0.avail_in, 0);
         self.zst.0.avail_in = buf.len() as _;
+        self.zst.0.next_in = buf.as_ptr() as *mut _;
 
-        self.zst.0.next_out = self.out_buf.as_mut_ptr();
-        self.zst.0.avail_out = self.out_buf.len() as _;
-
-        // keep writing as much as possible to the output buf
         let mut n_bytes = 0;
         while self.zst.0.avail_in > 0 {
-            self.zst.step_inflate()?;
-            n_bytes = buf.len() - self.zst.0.avail_in as usize;
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                // Read gzip header
+                if self.codec == Codec::Gzip {
+                    // Read this member's gzip header
+                    let mut gz_hdr: mem::MaybeUninit<isal::isal_gzip_header> =
+                        mem::MaybeUninit::uninit();
+                    unsafe { isal::isal_gzip_header_init(gz_hdr.as_mut_ptr()) };
+                    let mut gz_hdr = unsafe { gz_hdr.assume_init() };
+                    read_gzip_header(&mut self.zst.0, &mut gz_hdr)?;
 
-            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
+                // Read zlib header
+                } else if self.codec == Codec::Zlib {
+                    self.zst.0.crc_flag = 0; // zlib uses adler-32
+
+                    let mut hdr: mem::MaybeUninit<isal::isal_zlib_header> =
+                        mem::MaybeUninit::uninit();
+                    unsafe { isal::isal_zlib_header_init(hdr.as_mut_ptr()) };
+                    let mut hdr = unsafe { hdr.assume_init() };
+                    read_zlib_header(&mut self.zst.0, &mut hdr)?;
+                    self.zst.0.next_in = buf[2..].as_ptr() as *mut _; // skip header now that it's read
+                                                                      // self.zst.0.avail_in -= 4; // skip adler-32 trailer
+                }
+            }
+
+            // decompress member
+            loop {
+                self.out_buf.resize(n_bytes + BUF_SIZE, 0);
+
+                self.zst.0.next_out = self.out_buf[n_bytes..n_bytes + BUF_SIZE].as_mut_ptr();
+                self.zst.0.avail_out = BUF_SIZE as _;
+
+                self.zst.step_inflate()?;
+
+                n_bytes += BUF_SIZE - self.zst.0.avail_out as usize;
+
+                let state = self.zst.block_state();
+                match self.codec {
+                    Codec::Deflate | Codec::Zlib => {
+                        // On block finished we're done done w/ the block,
+                        // on block coded, we need to move onto the next input buffer
+                        if state == isal::isal_block_state_ISAL_BLOCK_FINISH
+                            || state == isal::isal_block_state_ISAL_BLOCK_CODED
+                        {
+                            break;
+                        }
+                    }
+                    Codec::Gzip => {
+                        if state == isal::isal_block_state_ISAL_BLOCK_CODED
+                            || state == isal::isal_block_state_ISAL_BLOCK_TYPE0
+                            || state == isal::isal_block_state_ISAL_BLOCK_HDR
+                            || state == isal::isal_block_state_ISAL_BLOCK_FINISH
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            if self.zst.0.block_state == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
             }
-
-            if self.zst.0.avail_out == 0 {
-                let bytes_written = self.out_buf.len() - self.zst.0.avail_out as usize;
-                self.inner.write_all(&self.out_buf[..bytes_written])?;
-                self.zst.0.next_out = self.out_buf.as_mut_ptr();
-                self.zst.0.avail_out = self.out_buf.len() as _;
-            }
-
-            println!(
-                "Looping with state: {}, avail_in: {}, avail_out: {}",
-                self.zst.0.block_state, self.zst.0.avail_in, self.zst.0.avail_out
-            )
         }
-        let bytes_written = self.out_buf.len() - self.zst.0.avail_out as usize;
-        self.inner.write_all(&self.out_buf[..bytes_written])?;
+        // zlib adler32
+        if self.codec == Codec::Zlib && buf.len() > 4 {
+            // Update adler
+            self.adler32 =
+                unsafe { isal::isal_adler32(self.adler32, self.out_buf.as_ptr(), n_bytes as _) };
 
-        Ok(n_bytes)
+            // when end of block, verify adler matches (state reset above on block finish)
+            if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_NEW_HDR {
+                // unwrap ok, ensured buf len > 4 above
+                debug_assert!(buf.len() > 4);
+                let bytes: [u8; 4] = (buf[buf.len() - 4..buf.len()]).try_into().unwrap();
+                let expected_adler32 = u32::from_be_bytes(bytes);
+                if self.adler32 != expected_adler32 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        Error::DecompressionError(DecompCode::IncorrectChecksum),
+                    ));
+                }
+            }
+        }
+        self.out_buf.truncate(n_bytes);
+        self.dste = n_bytes;
+        self.dsts = 0;
+        self.write_from_out_buf()?;
+
+        Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
+        loop {
+            if self.write_from_out_buf()? == 0 {
+                break;
+            }
+        }
         self.inner.flush()
     }
 }
