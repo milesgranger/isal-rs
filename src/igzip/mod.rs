@@ -440,11 +440,13 @@ pub mod tests {
         decompressed
     }
 
+    // Test codecs
     macro_rules! test_codec {
         ($codec_str:ident, $codec:expr) => {
             mod $codec_str {
                 use super::*;
 
+                // Test compression levels
                 macro_rules! test_compression_level {
                     ($lvl_name:ident, $lvl:expr) => {
                         mod $lvl_name {
@@ -467,9 +469,7 @@ pub mod tests {
                                             let mut decompressed = vec![0; decompressed_len * 2];
 
                                             // compress_into
-                                            let nbytes_compressed =
-                                                compress_into(&data, &mut compressed, $lvl, $codec)
-                                                    .unwrap();
+                                            let nbytes_compressed = compress_into(&data, &mut compressed, $lvl, $codec).unwrap();
 
                                             // decompress_into
                                             let nbytes_decompressed = decompress_into(
@@ -480,38 +480,22 @@ pub mod tests {
                                             .unwrap();
 
                                             // round trip output matches original input
-                                            assert!(same_same(
-                                                &data,
-                                                &decompressed[..nbytes_decompressed]
-                                            ));
+                                            assert!(same_same(&data, &decompressed[..nbytes_decompressed]));
                                         }
                                         #[test]
                                         fn basic_compress_into() {
                                             let data = $size();
                                             let mut output = vec![0_u8; data.len() + 50];
-                                            let _nbytes = compress_into(
-                                                data.as_slice(),
-                                                &mut output,
-                                                $lvl,
-                                                $codec,
-                                            )
-                                            .unwrap();
+                                            let _nbytes = compress_into(data.as_slice(), &mut output, $lvl, $codec).unwrap();
                                         }
                                         #[test]
                                         fn flate2_zlib_compat_compress_into() {
                                             let data = $size();
 
                                             let mut compressed = vec![0u8; data.len() + 50];
-                                            let n = compress_into(
-                                                data.as_slice(),
-                                                &mut compressed,
-                                                $lvl,
-                                                $codec,
-                                            )
-                                            .unwrap();
+                                            let n = compress_into(data.as_slice(), &mut compressed, $lvl, $codec).unwrap();
 
-                                            let decompressed =
-                                                flate2_decompress(&compressed[..n], $codec);
+                                            let decompressed = flate2_decompress(&compressed[..n], $codec);
 
                                             assert_eq!(data.len(), decompressed.len());
                                             assert!(same_same(&data, decompressed.as_slice()));
@@ -528,7 +512,7 @@ pub mod tests {
                                             assert!(same_same(&data, &decompressed[..n]));
                                         }
 
-                                        // Test read Encoder/Decoder
+                                        // Test read/write Encoder/Decoder
                                         macro_rules! test_read_or_write {
                                             ($op:ident)  => {
                                                 mod $op {
@@ -537,7 +521,8 @@ pub mod tests {
                                                     use std::io;
 
                                                     // Wrapper to normal compress which is implemented using Read Encoder
-                                                    // but could just as well use Write Encoder.
+                                                    // but could just as well use Write Encoder. We'll be explicit here for
+                                                    // testing purposes as to which Encoder (read/write) is being used
                                                     fn compress<R: io::Read>(mut data: R, lvl: CompressionLevel, codec: Codec) -> Vec<u8> {
                                                         if stringify!($op) == "read" {
                                                             use crate::igzip::read::{Encoder};
@@ -558,8 +543,9 @@ pub mod tests {
                                                             panic!("Unknown op: {}", stringify!($op));
                                                         }
                                                     }
-                                                    // Wrapper to normal decompress which is implemented using Read Encoder
-                                                    // but could just as well use Write Encoder.
+                                                    // Wrapper to normal compress which is implemented using Read Decoder
+                                                    // but could just as well use Write Encoder. We'll be explicit here for
+                                                    // testing purposes as to which Decoder (read/write) is being used
                                                     fn decompress<R: io::Read>(mut data: R, codec: Codec) -> Vec<u8> {
                                                         if stringify!($op) == "read" {
                                                             use crate::igzip::read::{Decoder};
@@ -591,6 +577,7 @@ pub mod tests {
                                                         assert_eq!(data.len(), decompressed.len());
                                                         assert!(same_same(&data, &decompressed));
                                                     }
+
                                                     #[test]
                                                     fn flate2_zlib_compat_decompress() {
                                                         let data = $size();
@@ -611,10 +598,13 @@ pub mod tests {
                                                         assert_eq!(data.len(), decompressed.len());
                                                         assert!(same_same(&data, &decompressed));
                                                     }
+
                                                     #[test]
                                                     fn basic_decompress_multi_stream() {
 
                                                         // multi-stream only supported for gzip
+                                                        // TODO: make it work for zlib and deflate somehow?
+                                                        //       maybe as easy as checking if finished but still avail_in?
                                                         if $codec != Codec::Gzip {
                                                             return;
                                                         }
@@ -638,24 +628,13 @@ pub mod tests {
                                                         let data = $size();
                                                         let _compressed = compress(data.as_slice(), $lvl, $codec);
                                                     }
-                                                    #[test]
-                                                    fn basic_decompress() {
-                                                        /* Decompress data which is larger than BUF_SIZE */
-                                                        let data = $size();
-                                                        let compressed =
-                                                            compress(data.as_slice(), $lvl, $codec);
-                                                        let decompressed =
-                                                            decompress(compressed.as_slice(), $codec);
-                                                        assert_eq!(data.len(), decompressed.len());
-                                                        assert!(same_same(&data, &decompressed));
-                                                    }
+
                                                     #[test]
                                                     fn basic_round_trip() {
                                                         let data = $size();
-                                                        let compressed =
-                                                            compress(data.as_slice(), $lvl, $codec);
-                                                        let decompressed =
-                                                            decompress(compressed.as_slice(), $codec);
+                                                        let compressed = compress(data.as_slice(), $lvl, $codec);
+                                                        let decompressed = decompress(compressed.as_slice(), $codec);
+                                                        assert_eq!(data.len(), decompressed.len());
                                                         assert!(same_same(&decompressed, data.as_slice()));
                                                     }
                                                 }
