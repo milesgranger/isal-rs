@@ -74,6 +74,9 @@ impl<R: io::Read> io::Read for Encoder<R> {
                 self.stream.stream.next_in = self.in_buf.as_mut_ptr();
                 self.stream.stream.end_of_stream = (self.stream.stream.avail_in == 0) as _;
             } else {
+                // Check if current next_in ptr is valid; pointing to somewhere in the in buffer
+                // it may not be after a reset. If not, just read into in_buf and update
+                // otherwise we can shift it to the front and read more w/o reallocation
                 let ptr = self.stream.stream.next_in;
                 let base_ptr = self.in_buf.as_mut_ptr();
                 if ptr < base_ptr || ptr > unsafe { base_ptr.add(self.in_buf.len()) } {
@@ -83,14 +86,20 @@ impl<R: io::Read> io::Read for Encoder<R> {
                 } else {
                     let idx =
                         unsafe { self.stream.stream.next_in.offset_from(self.in_buf.as_ptr()) };
+
+                    // Extra sanity check - this probably / should never happen after ptr check above.
                     if idx < 0
                         || idx + self.stream.stream.avail_in as isize > self.in_buf.len() as isize
                     {
-                        panic!(
-                            "Index is probably wrong: {}, avail_in: {}, avail_out: {}",
+                        let msg = format!(
+                            "Compression error refilling in buffer, index is probably wrong: {}, avail_in: {}, avail_out: {}",
                             idx, self.stream.stream.avail_in, self.stream.stream.avail_out
                         );
+                        let err = Error::Other((None, msg));
+                        return Err(io::Error::new(io::ErrorKind::Other, err));
                     }
+
+                    // Can safely shift next input to the front and read more into tail of in buf
                     let idx = idx as usize;
                     self.in_buf
                         .copy_within(idx..idx + self.stream.stream.avail_in as usize, 0);
