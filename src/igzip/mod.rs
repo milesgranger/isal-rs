@@ -610,7 +610,60 @@ pub mod tests {
                                             assert_eq!(expected.len(), decompressed.len());
                                             assert!(same_same(&expected, &decompressed));
                                         }
+
+                                        // Test read Encoder/Decoder
+                                        mod read {
+                                            use super::*;
+
+                                            use crate::igzip::read::{Encoder, Decoder};
+
+                                            #[test]
+                                            fn roundtrip() {
+                                                let data = $size();
+                                                let mut encoder = Encoder::new(data.as_slice(), $lvl, $codec);
+                                                let mut output = vec![];
+
+                                                let n = io::copy(&mut encoder, &mut output).unwrap();
+                                                assert_eq!(n as usize, output.len());
+
+                                                let mut decoder = Decoder::new(output.as_slice(), $codec);
+                                                let mut decompressed = vec![];
+                                                let nbytes = io::copy(&mut decoder, &mut decompressed).unwrap();
+
+                                                assert_eq!(nbytes as usize, data.len());
+                                                assert!(same_same(&data, &decompressed));
+                                            }
+
+                                            #[test]
+                                            fn basic_compress() {
+                                                let input = $size();
+                                                let mut encoder = Encoder::new(input.as_slice(), $lvl, $codec);
+                                                let mut output = vec![];
+
+                                                let n = io::copy(&mut encoder, &mut output).unwrap() as usize;
+                                                let decompressed = decompress(&output[..n], $codec).unwrap();
+
+                                                assert_eq!(input.len(), decompressed.len());
+                                                assert!(same_same(&input, &decompressed));
+                                            }
+
+                                            #[test]
+                                            fn basic_decompress() {
+                                                let input = $size();
+                                                let compressed = compress(input.as_slice(), $lvl, $codec).unwrap();
+
+                                                let mut decoder = Decoder::new(compressed.as_slice(), $codec);
+                                                let mut decompressed = vec![];
+
+                                                let n = io::copy(&mut decoder, &mut decompressed).unwrap() as usize;
+                                                assert_eq!(n, decompressed.len());
+                                                assert_eq!(input.len(), decompressed.len());
+                                                assert!(same_same(&input, decompressed.as_slice()));
+                                            }
+
+                                        }
                                     }
+
                                 };
                             }
 
