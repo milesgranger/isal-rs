@@ -5,7 +5,6 @@ pub mod read;
 pub mod write;
 
 use std::io;
-use std::io::Write;
 use std::mem;
 
 pub(crate) use crate::error::{Error, Result};
@@ -66,28 +65,26 @@ pub fn compress_into(
 /// Compress `input`
 #[inline(always)]
 pub fn compress<R: std::io::Read>(
-    mut input: R,
+    input: R,
     level: CompressionLevel,
     codec: Codec,
 ) -> Result<Vec<u8>> {
-    use crate::write::Encoder;
+    use crate::read::Encoder;
 
     let mut output = vec![];
-    let mut encoder = Encoder::new(&mut output, level, codec);
-    io::copy(&mut input, &mut encoder)?;
-    encoder.flush()?;
+    let mut encoder = Encoder::new(input, level, codec);
+    io::copy(&mut encoder, &mut output)?;
     Ok(output)
 }
 
 /// Decompress
 #[inline(always)]
-pub fn decompress<R: std::io::Read>(mut input: R, codec: Codec) -> Result<Vec<u8>> {
-    use crate::write::Decoder;
+pub fn decompress<R: std::io::Read>(input: R, codec: Codec) -> Result<Vec<u8>> {
+    use crate::read::Decoder;
 
     let mut output = vec![];
-    let mut decoder = Decoder::new(&mut output, codec);
-    io::copy(&mut input, &mut decoder)?;
-    decoder.flush()?;
+    let mut decoder = Decoder::new(input, codec);
+    io::copy(&mut decoder, &mut output)?;
     Ok(output)
 }
 

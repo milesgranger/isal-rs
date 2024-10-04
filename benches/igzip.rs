@@ -1,9 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use isal as igzip;
-use std::{
-    collections::HashMap,
-    io::{self, Cursor},
-};
+use std::io::{self, Cursor};
 
 static DATA: [(&'static str, &'static [u8]); 25] = [
     ("COPYING", include_bytes!("data/COPYING")),
@@ -39,15 +36,14 @@ static DATA: [(&'static str, &'static [u8]); 25] = [
 // Get a subset of the data, using all of it takes a very long time
 // so can mix-match when in doubt or debugging. As of now, it selects
 // a decent mix I think, last one being a larger file 'webster' @ ~40M
-fn get_data() -> HashMap<&'static str, &'static [u8]> {
-    HashMap::from_iter([DATA[1], DATA[5], DATA[10], DATA[15], DATA[20], DATA[24]].into_iter())
-}
+static SAMPLE: [(&'static str, &'static [u8]); 6] =
+    [DATA[1], DATA[5], DATA[10], DATA[15], DATA[20], DATA[24]];
 
 fn roundtrip(c: &mut Criterion) {
-    for (i, data) in get_data().into_iter() {
+    for (name, data) in SAMPLE {
         let mut group = c.benchmark_group("roundtrip");
 
-        group.bench_with_input(BenchmarkId::new("isal", i), data, |b, data| {
+        group.bench_with_input(BenchmarkId::new("isal", name), data, |b, data| {
             b.iter(|| {
                 let compressed =
                     isal::compress(data, isal::CompressionLevel::best(), isal::Codec::Gzip)
@@ -57,7 +53,7 @@ fn roundtrip(c: &mut Criterion) {
                 assert_eq!(data.len(), decompressed.len());
             })
         });
-        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
+        group.bench_with_input(BenchmarkId::new("flate2", name), data, |b, data| {
             b.iter(|| {
                 let mut compressed = vec![];
                 let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
@@ -75,10 +71,10 @@ fn roundtrip(c: &mut Criterion) {
 }
 
 fn read_encoder(c: &mut Criterion) {
-    for (i, data) in get_data().into_iter() {
+    for (name, data) in SAMPLE {
         let mut group = c.benchmark_group("io::Read Gzip Encoder");
 
-        group.bench_with_input(BenchmarkId::new("isal", i), data, |b, data| {
+        group.bench_with_input(BenchmarkId::new("isal", name), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
@@ -86,7 +82,7 @@ fn read_encoder(c: &mut Criterion) {
                 let _ = io::copy(&mut encoder, &mut output).unwrap();
             })
         });
-        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
+        group.bench_with_input(BenchmarkId::new("flate2", name), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
@@ -98,10 +94,10 @@ fn read_encoder(c: &mut Criterion) {
 }
 
 fn write_encoder(c: &mut Criterion) {
-    for (i, data) in get_data() {
+    for (name, data) in SAMPLE {
         let mut group = c.benchmark_group("io::Write Grzip Encoder");
 
-        group.bench_with_input(BenchmarkId::new("isal", i), data, |b, data| {
+        group.bench_with_input(BenchmarkId::new("isal", name), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
@@ -109,7 +105,7 @@ fn write_encoder(c: &mut Criterion) {
                 let _ = io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
             })
         });
-        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
+        group.bench_with_input(BenchmarkId::new("flate2", name), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
