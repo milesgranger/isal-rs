@@ -70,17 +70,17 @@ pub fn compress<R: std::io::Read>(
     level: CompressionLevel,
     codec: Codec,
 ) -> Result<Vec<u8>> {
-    // let mut out = vec![];
-    // let mut encoder = read::Encoder::new(input, level, codec);
-    // io::copy(&mut encoder, &mut out)?;
-    // Ok(out)
-    use crate::write::Encoder;
+    let mut out = vec![];
+    let mut encoder = read::Encoder::new(input, level, codec);
+    io::copy(&mut encoder, &mut out)?;
+    Ok(out)
+    // use crate::write::Encoder;
 
-    let mut output = vec![];
-    let mut encoder = Encoder::new(&mut output, level, codec);
-    io::copy(&mut input, &mut encoder)?;
-    encoder.flush()?;
-    Ok(output)
+    // let mut output = vec![];
+    // let mut encoder = Encoder::new(&mut output, level, codec);
+    // io::copy(&mut input, &mut encoder)?;
+    // encoder.flush()?;
+    // Ok(output)
 }
 
 /// Decompress
@@ -366,7 +366,7 @@ pub mod tests {
     // Generate some 'real-world' data by reading src code and duplicating until well over buf size
     static LARGE_DATA: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
         let mut bytes = read_dir_files(std::path::PathBuf::from_str("./src").unwrap());
-        while bytes.len() < BUF_SIZE * 10 {
+        while bytes.len() < BUF_SIZE * 100 {
             bytes.extend(bytes.clone());
         }
         bytes
@@ -385,12 +385,11 @@ pub mod tests {
         all_bytes
     }
 
-    // Default testing data
-    pub fn gen_large_data() -> Vec<u8> {
+    pub fn large_data() -> Vec<u8> {
         let data = &*LARGE_DATA;
         data.clone()
     }
-    pub fn get_small_data() -> Vec<u8> {
+    pub fn small_data() -> Vec<u8> {
         b"foobar".to_vec()
     }
 
@@ -648,8 +647,8 @@ pub mod tests {
                                     }
                                 }
                             }
-                            test_data_size!(get_small_data);
-                            test_data_size!(gen_large_data);
+                            test_data_size!(small_data);
+                            test_data_size!(large_data);
                         }
                     }
                 }
