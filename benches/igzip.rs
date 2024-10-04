@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use isal::igzip;
+use isal as igzip;
 use std::{
     collections::HashMap,
     io::{self, Cursor},
@@ -41,6 +41,37 @@ static DATA: [(&'static str, &'static [u8]); 25] = [
 // a decent mix I think, last one being a larger file 'webster' @ ~40M
 fn get_data() -> HashMap<&'static str, &'static [u8]> {
     HashMap::from_iter([DATA[1], DATA[5], DATA[10], DATA[15], DATA[20], DATA[24]].into_iter())
+}
+
+fn roundtrip(c: &mut Criterion) {
+    for (i, data) in get_data().into_iter() {
+        let mut group = c.benchmark_group("roundtrip");
+
+        group.bench_with_input(BenchmarkId::new("isal", i), data, |b, data| {
+            b.iter(|| {
+                let compressed =
+                    isal::compress(data, isal::CompressionLevel::best(), isal::Codec::Gzip)
+                        .unwrap();
+                let decompressed =
+                    isal::decompress(compressed.as_slice(), isal::Codec::Gzip).unwrap();
+                assert_eq!(data.len(), decompressed.len());
+            })
+        });
+        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
+            b.iter(|| {
+                let mut compressed = vec![];
+                let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
+                let _ = io::copy(&mut encoder, &mut compressed).unwrap();
+
+                let mut decompressed = vec![];
+                let mut decoder = flate2::read::GzDecoder::new(compressed.as_slice());
+                let _ = io::copy(&mut decoder, &mut decompressed).unwrap();
+
+                assert_eq!(data.len(), decompressed.len());
+            })
+        });
+        group.finish()
+    }
 }
 
 fn read_encoder(c: &mut Criterion) {
@@ -94,6 +125,7 @@ criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(50);
     targets =
+        roundtrip,
         read_encoder,
         write_encoder,
 }
