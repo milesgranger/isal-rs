@@ -77,7 +77,7 @@ pub fn compress<R: std::io::Read>(
 
     let mut output = vec![];
     let mut encoder = Encoder::new(&mut output, level, codec);
-    io::copy(&mut input, &mut encoder).unwrap();
+    io::copy(&mut input, &mut encoder)?;
     encoder.flush()?;
     Ok(output)
 }
@@ -93,7 +93,7 @@ pub fn decompress<R: std::io::Read>(mut input: R, codec: Codec) -> Result<Vec<u8
 
     let mut output = vec![];
     let mut decoder = Decoder::new(&mut output, codec);
-    io::copy(&mut input, &mut decoder).unwrap();
+    io::copy(&mut input, &mut decoder)?;
     decoder.flush()?;
     Ok(output)
 }
