@@ -73,6 +73,7 @@ pub fn compress<R: std::io::Read>(
     // let mut out = vec![];
     // let mut encoder = read::Encoder::new(input, level, codec);
     // io::copy(&mut encoder, &mut out)?;
+    // Ok(out)
     use crate::write::Encoder;
 
     let mut output = vec![];
@@ -360,13 +361,34 @@ pub mod tests {
     use md5;
 
     use super::*;
+    use std::str::FromStr;
+
+    // Generate some 'real-world' data by reading src code and duplicating until well over buf size
+    static LARGE_DATA: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
+        let mut bytes = read_dir_files(std::path::PathBuf::from_str("./src").unwrap());
+        while bytes.len() < BUF_SIZE * 10 {
+            bytes.extend(bytes.clone());
+        }
+        bytes
+    });
+
+    fn read_dir_files(dir: std::path::PathBuf) -> Vec<u8> {
+        let mut all_bytes = vec![];
+        for entry in std::fs::read_dir(dir).unwrap().into_iter() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                all_bytes.extend(std::fs::read(entry.path()).unwrap());
+            } else if entry.file_type().unwrap().is_dir() {
+                all_bytes.extend(read_dir_files(entry.path()));
+            }
+        }
+        all_bytes
+    }
 
     // Default testing data
     pub fn gen_large_data() -> Vec<u8> {
-        (0..(BUF_SIZE * 20) + 1)
-            .map(|_| b"oh what a beautiful morning, oh what a beautiful day!!".to_vec())
-            .flat_map(|v| v)
-            .collect()
+        let data = &*LARGE_DATA;
+        data.clone()
     }
     pub fn get_small_data() -> Vec<u8> {
         b"foobar".to_vec()
