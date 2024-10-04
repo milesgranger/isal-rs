@@ -1,6 +1,6 @@
 use std::{fmt, io, result};
 
-use crate::igzip::{CompCode, DecompCode};
+use crate::{CompCode, DecompCode};
 
 pub type Result<T> = result::Result<T, Error>;
 
