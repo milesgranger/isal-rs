@@ -70,26 +70,18 @@ pub fn compress<R: std::io::Read>(
     level: CompressionLevel,
     codec: Codec,
 ) -> Result<Vec<u8>> {
-    let mut out = vec![];
-    let mut encoder = read::Encoder::new(input, level, codec);
-    io::copy(&mut encoder, &mut out)?;
-    Ok(out)
-    // use crate::write::Encoder;
+    use crate::write::Encoder;
 
-    // let mut output = vec![];
-    // let mut encoder = Encoder::new(&mut output, level, codec);
-    // io::copy(&mut input, &mut encoder)?;
-    // encoder.flush()?;
-    // Ok(output)
+    let mut output = vec![];
+    let mut encoder = Encoder::new(&mut output, level, codec);
+    io::copy(&mut input, &mut encoder)?;
+    encoder.flush()?;
+    Ok(output)
 }
 
 /// Decompress
 #[inline(always)]
 pub fn decompress<R: std::io::Read>(mut input: R, codec: Codec) -> Result<Vec<u8>> {
-    // let mut out = vec![];
-    // let mut decoder = read::Decoder::new(input, codec);
-    // io::copy(&mut decoder, &mut out)?;
-    // Ok(out)
     use crate::write::Decoder;
 
     let mut output = vec![];

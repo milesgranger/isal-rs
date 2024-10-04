@@ -62,9 +62,17 @@ impl<R: io::Read> Encoder<R> {
 
 impl<R: io::Read> io::Read for Encoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // Check if there is data left in out_buf, otherwise refill; if end state, return 0
         self.stream.stream.avail_out = buf.len() as _;
         self.stream.stream.next_out = buf.as_mut_ptr();
+
+        // If we have an intermediate compressed format (ICF) buffer full, we just need
+        // to provide more output and return
+        if self.stream.stream.internal_state.state
+            == isal::isal_zstate_state_ZSTATE_TMP_FLUSH_ICF_BUFFER
+        {
+            self.stream.deflate()?;
+            return Ok(buf.len() - self.stream.stream.avail_out as usize);
+        }
 
         let mut nbytes = 0;
         while self.stream.stream.avail_out > 0 {
@@ -109,17 +117,12 @@ impl<R: io::Read> io::Read for Encoder<R> {
                 self.stream.stream.next_in = self.in_buf[0..].as_mut_ptr();
             }
 
-            // If it's zstate end, we can exit early if no more avail in, otherwise start next by resetting
-            if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
-                if self.stream.stream.avail_in == 0 {
-                    return Ok(nbytes);
-                } else {
-                    unsafe { isal::isal_deflate_reset(&mut self.stream.stream) };
-                }
-            }
-
             self.stream.deflate()?;
             nbytes = buf.len() - self.stream.stream.avail_out as usize;
+
+            if self.stream.stream.internal_state.state == isal::isal_zstate_state_ZSTATE_END {
+                break;
+            }
         }
 
         Ok(nbytes)
@@ -219,12 +222,6 @@ impl<R: io::Read> io::Read for Decoder<R> {
                 self.zst.reset();
             }
 
-            println!(
-                "State: {}, avail_in: {}, avail_out: {}",
-                self.zst.block_state(),
-                self.zst.state.avail_in,
-                self.zst.state.avail_out
-            );
             self.zst.step_inflate()?;
             n_bytes = buf.len() - self.zst.state.avail_out as usize;
         }

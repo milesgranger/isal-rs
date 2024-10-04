@@ -57,19 +57,19 @@ fn roundtrip(c: &mut Criterion) {
                 assert_eq!(data.len(), decompressed.len());
             })
         });
-        // group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
-        //     b.iter(|| {
-        //         let mut compressed = vec![];
-        //         let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
-        //         let _ = io::copy(&mut encoder, &mut compressed).unwrap();
+        group.bench_with_input(BenchmarkId::new("flate2", i), data, |b, data| {
+            b.iter(|| {
+                let mut compressed = vec![];
+                let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
+                let _ = io::copy(&mut encoder, &mut compressed).unwrap();
 
-        //         let mut decompressed = vec![];
-        //         let mut decoder = flate2::read::GzDecoder::new(compressed.as_slice());
-        //         let _ = io::copy(&mut decoder, &mut decompressed).unwrap();
+                let mut decompressed = vec![];
+                let mut decoder = flate2::read::GzDecoder::new(compressed.as_slice());
+                let _ = io::copy(&mut decoder, &mut decompressed).unwrap();
 
-        //         assert_eq!(data.len(), decompressed.len());
-        //     })
-        // });
+                assert_eq!(data.len(), decompressed.len());
+            })
+        });
         group.finish()
     }
 }
