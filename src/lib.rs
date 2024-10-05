@@ -405,6 +405,9 @@ pub mod tests {
     pub fn small_data() -> Vec<u8> {
         b"foobar".to_vec()
     }
+    pub fn empty_data() -> Vec<u8> {
+        vec![]
+    }
 
     pub fn same_same(a: &[u8], b: &[u8]) -> bool {
         md5::compute(a) == md5::compute(b)
@@ -667,6 +670,7 @@ pub mod tests {
                                     }
                                 }
                             }
+                            test_data_size!(empty_data);
                             test_data_size!(small_data);
                             test_data_size!(large_data);
                         }
