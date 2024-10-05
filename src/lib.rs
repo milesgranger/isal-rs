@@ -491,7 +491,8 @@ pub mod tests {
                                             let compressed_len = compress(data.as_slice(), $lvl, $codec).unwrap().len();
                                             let decompressed_len = data.len();
 
-                                            let mut compressed = vec![0; compressed_len * 2];
+                                            // cmp is special case when data to be compressed is empty, we at least need room for the header
+                                            let mut compressed = vec![0; std::cmp::max(compressed_len * 2, 8)];
                                             let mut decompressed = vec![0; decompressed_len * 2];
 
                                             // compress_into
