@@ -308,6 +308,7 @@ impl ZStream {
 
 pub(crate) struct InflateState {
     state: isal::inflate_state,
+    no_change_count: usize,
 }
 
 impl std::fmt::Debug for InflateState {
@@ -326,7 +327,10 @@ impl InflateState {
         unsafe { isal::isal_inflate_init(uninit.as_mut_ptr()) };
         let mut state = unsafe { uninit.assume_init() };
         state.crc_flag = codec as _;
-        Self { state }
+        Self {
+            state,
+            no_change_count: 0,
+        }
     }
 
     pub fn block_state(&self) -> u32 {
@@ -335,6 +339,7 @@ impl InflateState {
 
     pub fn reset(&mut self) {
         unsafe { isal::isal_inflate_reset(&mut self.state) }
+        self.no_change_count = 0;
     }
 
     pub fn step_inflate(&mut self) -> Result<()> {
@@ -351,10 +356,13 @@ impl InflateState {
         // ISA-L doesn't catch some bad data in the header and will loop endlessly
         // unless we check if anything was written to the output
         if self.state.avail_out == avail_out {
-            return Err(Error::Other((
-                None,
-                "Corrupt data, appears the compressed input is invalid".to_string(),
-            )));
+            self.no_change_count += 1;
+            if self.no_change_count >= 2 {
+                return Err(Error::Other((
+                    None,
+                    "Corrupt data, appears the compressed input is invalid".to_string(),
+                )));
+            }
         }
         Ok(())
     }
