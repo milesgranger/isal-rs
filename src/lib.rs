@@ -328,11 +328,25 @@ impl InflateState {
     }
 
     pub fn step_inflate(&mut self) -> Result<()> {
+        let avail_out = self.state.avail_out;
+
         let ret = unsafe { isal::isal_inflate(&mut self.state) };
+
+        // Check for existing error ret codes
         match DecompCode::try_from(ret)? {
             DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
+        }?;
+
+        // ISA-L doesn't catch some bad data in the header and will loop endlessly
+        // unless we check if anything was written to the output
+        if self.state.avail_out == avail_out {
+            return Err(Error::Other((
+                None,
+                "Corrupt data, appears the compressed input is invalid".to_string(),
+            )));
         }
+        Ok(())
     }
 
     pub fn inflate_stateless(&mut self) -> Result<()> {
@@ -560,7 +574,9 @@ pub mod tests {
 
                                                     #[test]
                                                     fn test_bad_data_decompress() {
-                                                        assert!(decompress(b"data".as_slice(), $codec).is_err());
+                                                        // try decompressing the uncompressed data
+                                                        let data = $size();
+                                                        assert!(decompress(data.as_slice(), $codec).is_err());
                                                     }
 
                                                     #[test]
