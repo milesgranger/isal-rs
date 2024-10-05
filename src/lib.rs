@@ -310,6 +310,16 @@ pub(crate) struct InflateState {
     state: isal::inflate_state,
 }
 
+impl std::fmt::Debug for InflateState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InflateState")
+            .field("block_state", &self.state.block_state)
+            .field("avail_in", &self.state.avail_in)
+            .field("avail_out", &self.state.avail_out)
+            .finish()
+    }
+}
+
 impl InflateState {
     pub fn new(codec: Codec) -> Self {
         let mut uninit: mem::MaybeUninit<isal::inflate_state> = mem::MaybeUninit::uninit();
