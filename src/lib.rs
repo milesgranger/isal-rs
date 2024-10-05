@@ -308,6 +308,17 @@ impl ZStream {
 
 pub(crate) struct InflateState {
     state: isal::inflate_state,
+    no_change_count: usize,
+}
+
+impl std::fmt::Debug for InflateState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InflateState")
+            .field("block_state", &self.state.block_state)
+            .field("avail_in", &self.state.avail_in)
+            .field("avail_out", &self.state.avail_out)
+            .finish()
+    }
 }
 
 impl InflateState {
@@ -316,7 +327,10 @@ impl InflateState {
         unsafe { isal::isal_inflate_init(uninit.as_mut_ptr()) };
         let mut state = unsafe { uninit.assume_init() };
         state.crc_flag = codec as _;
-        Self { state }
+        Self {
+            state,
+            no_change_count: 0,
+        }
     }
 
     pub fn block_state(&self) -> u32 {
@@ -325,6 +339,7 @@ impl InflateState {
 
     pub fn reset(&mut self) {
         unsafe { isal::isal_inflate_reset(&mut self.state) }
+        self.no_change_count = 0;
     }
 
     pub fn step_inflate(&mut self) -> Result<()> {
@@ -341,10 +356,13 @@ impl InflateState {
         // ISA-L doesn't catch some bad data in the header and will loop endlessly
         // unless we check if anything was written to the output
         if self.state.avail_out == avail_out {
-            return Err(Error::Other((
-                None,
-                "Corrupt data, appears the compressed input is invalid".to_string(),
-            )));
+            self.no_change_count += 1;
+            if self.no_change_count >= 2 {
+                return Err(Error::Other((
+                    None,
+                    "Corrupt data, appears the compressed input is invalid".to_string(),
+                )));
+            }
         }
         Ok(())
     }
@@ -394,6 +412,9 @@ pub mod tests {
     }
     pub fn small_data() -> Vec<u8> {
         b"foobar".to_vec()
+    }
+    pub fn empty_data() -> Vec<u8> {
+        vec![]
     }
 
     pub fn same_same(a: &[u8], b: &[u8]) -> bool {
@@ -470,7 +491,8 @@ pub mod tests {
                                             let compressed_len = compress(data.as_slice(), $lvl, $codec).unwrap().len();
                                             let decompressed_len = data.len();
 
-                                            let mut compressed = vec![0; compressed_len * 2];
+                                            // cmp is special case when data to be compressed is empty, we at least need room for the header
+                                            let mut compressed = vec![0; std::cmp::max(compressed_len * 2, 8)];
                                             let mut decompressed = vec![0; decompressed_len * 2];
 
                                             // compress_into
@@ -657,6 +679,7 @@ pub mod tests {
                                     }
                                 }
                             }
+                            test_data_size!(empty_data);
                             test_data_size!(small_data);
                             test_data_size!(large_data);
                         }

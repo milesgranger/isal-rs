@@ -184,6 +184,8 @@ pub struct Decoder<W: io::Write> {
     inner: W,
     zst: InflateState,
     out_buf: Vec<u8>,
+    total_out: usize,
+    total_in: usize,
     #[allow(dead_code)]
     codec: Codec,
 }
@@ -196,6 +198,8 @@ impl<W: io::Write> Decoder<W> {
             inner: writer,
             zst,
             out_buf: Vec::with_capacity(BUF_SIZE),
+            total_out: 0,
+            total_in: 0,
             codec,
         }
     }
@@ -216,8 +220,10 @@ impl<W: io::Write> io::Write for Decoder<W> {
         self.zst.state.avail_in = buf.len() as _;
         self.zst.state.next_in = buf.as_ptr() as *mut _;
 
+        self.total_in += buf.len();
+
         let mut n_bytes = 0;
-        while self.zst.state.avail_in > 0 {
+        loop {
             loop {
                 self.out_buf.resize(n_bytes + BUF_SIZE, 0);
 
@@ -227,6 +233,7 @@ impl<W: io::Write> io::Write for Decoder<W> {
                 self.zst.step_inflate()?;
 
                 n_bytes += BUF_SIZE - self.zst.state.avail_out as usize;
+                self.total_out += n_bytes;
 
                 if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                     break;
@@ -235,6 +242,10 @@ impl<W: io::Write> io::Write for Decoder<W> {
             if self.zst.block_state() == isal::isal_block_state_ISAL_BLOCK_FINISH {
                 self.zst.reset();
             }
+
+            if self.zst.state.avail_in == 0 {
+                break;
+            }
         }
         self.inner.write_all(&self.out_buf[..n_bytes])?;
 
@@ -242,6 +253,12 @@ impl<W: io::Write> io::Write for Decoder<W> {
         Ok(nbytes)
     }
     fn flush(&mut self) -> io::Result<()> {
+        if self.total_out == 0 && self.total_in == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                Error::DecompressionError(DecompCode::EndInput),
+            ));
+        }
         self.inner.flush()
     }
 }
