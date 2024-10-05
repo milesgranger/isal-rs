@@ -328,11 +328,25 @@ impl InflateState {
     }
 
     pub fn step_inflate(&mut self) -> Result<()> {
+        let avail_out = self.state.avail_out;
+
         let ret = unsafe { isal::isal_inflate(&mut self.state) };
+
+        // Check for existing error ret codes
         match DecompCode::try_from(ret)? {
             DecompCode::DecompOk => Ok(()),
             r => Err(Error::DecompressionError(r)),
+        }?;
+
+        // ISA-L doesn't catch some bad data in the header and will loop endlessly
+        // unless we check if anything was written to the output
+        if self.state.avail_out == avail_out {
+            return Err(Error::Other((
+                None,
+                "Corrupt data, appears the compressed input is invalid".to_string(),
+            )));
         }
+        Ok(())
     }
 
     pub fn inflate_stateless(&mut self) -> Result<()> {
@@ -537,25 +551,32 @@ pub mod tests {
                                                     // Wrapper to normal compress which is implemented using Read Decoder
                                                     // but could just as well use Write Encoder. We'll be explicit here for
                                                     // testing purposes as to which Decoder (read/write) is being used
-                                                    fn decompress<R: io::Read>(mut data: R, codec: Codec) -> Vec<u8> {
+                                                    fn decompress<R: io::Read>(mut data: R, codec: Codec) -> Result<Vec<u8>> {
                                                         if stringify!($op) == "read" {
                                                             use crate::read::{Decoder};
 
                                                             let mut output = vec![];
                                                             let mut decoder = Decoder::new(data, codec);
-                                                            io::copy(&mut decoder, &mut output).unwrap();
-                                                            output
+                                                            io::copy(&mut decoder, &mut output)?;
+                                                            Ok(output)
                                                         } else if stringify!($op) == "write" {
                                                             use crate::write::{Decoder};
 
                                                             let mut output = vec![];
                                                             let mut decoder = Decoder::new(&mut output, codec);
-                                                            io::copy(&mut data, &mut decoder).unwrap();
-                                                            decoder.flush().unwrap();
-                                                            output
+                                                            io::copy(&mut data, &mut decoder)?;
+                                                            decoder.flush()?;
+                                                            Ok(output)
                                                         } else {
                                                             panic!("Unknown op: {}", stringify!($op));
                                                         }
+                                                    }
+
+                                                    #[test]
+                                                    fn test_bad_data_decompress() {
+                                                        // try decompressing the uncompressed data
+                                                        let data = $size();
+                                                        assert!(decompress(data.as_slice(), $codec).is_err());
                                                     }
 
                                                     #[test]
@@ -584,7 +605,7 @@ pub mod tests {
                                                             return;
                                                         }
 
-                                                        let decompressed = decompress(compressed.as_slice(), $codec);
+                                                        let decompressed = decompress(compressed.as_slice(), $codec).unwrap();
 
                                                         assert_eq!(data.len(), decompressed.len());
                                                         assert!(same_same(&data, &decompressed));
@@ -605,7 +626,7 @@ pub mod tests {
                                                         let mut compressed = compress(data.as_slice(), $lvl, $codec);
                                                         compressed.extend(compressed.clone());
 
-                                                        let decompressed = decompress(compressed.as_slice(), $codec);
+                                                        let decompressed = decompress(compressed.as_slice(), $codec).unwrap();
 
                                                         let mut expected = data.clone();
                                                         expected.extend(data.clone());
@@ -624,7 +645,7 @@ pub mod tests {
                                                     fn basic_round_trip() {
                                                         let data = $size();
                                                         let compressed = compress(data.as_slice(), $lvl, $codec);
-                                                        let decompressed = decompress(compressed.as_slice(), $codec);
+                                                        let decompressed = decompress(compressed.as_slice(), $codec).unwrap();
                                                         assert_eq!(data.len(), decompressed.len());
                                                         assert!(same_same(&decompressed, data.as_slice()));
                                                     }
