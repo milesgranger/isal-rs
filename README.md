@@ -12,16 +12,14 @@ Rust bindings for [isa-l](https://github.com/intel/isa-l)
 Supports the following codecs using the ISA-L library under the hood:
 
 - GZIP 
-  - `isal::igzip::read::GzipEncoder/GzipDecoder`
-  - `isal::igzip::write::GzipEncoder/GzipDecoder`
+  - `isal::read::GzipEncoder/GzipDecoder`
+  - `isal::write::GzipEncoder/GzipDecoder`
 - DEFLATE
-  - `isal::igzip::read::DeflateEncoder/DeflateDecoder`
-  - `isal::igzip::write::DeflateEncoder/DeflateDecoder`
+  - `isal::read::DeflateEncoder/DeflateDecoder`
+  - `isal::write::DeflateEncoder/DeflateDecoder`
 - ZLIB
-  - `isal::igzip::read::ZlibEncoder/ZlibDecoder`
-  - `isal::igzip::write::ZlibEncoder/ZlibDecoder`
-  - TODO:
-    - [ ] Support an 'unsafe' setting where one can ignore step of verifying Adler32 checksum.
+  - `isal::read::ZlibEncoder/ZlibDecoder`
+  - `isal::write::ZlibEncoder/ZlibDecoder`
 
 Or can use functions of `de/compress` and `de/compress_into`
 
@@ -37,7 +35,7 @@ On Windows the build is invoked with `nmake`, other systems use the `./autogen.s
 #### Functions like `compress_into` and `decompress`
 (Similar functionality with `compress` and `decompress_into`)
 ```rust
-use isal::igzip::{CompressionLevel, Codec, compress_into, decompress};
+use isal::{CompressionLevel, Codec, compress_into, decompress};
 
 let mut compressed = vec![0u8; 100];
 let nbytes = compress_into(b"foobar", &mut compressed, CompressionLevel::Three, Codec::Gzip).unwrap();
@@ -50,7 +48,7 @@ assert_eq!(decompressed.as_slice(), b"foobar");
 
 ```rust
 use std::{io, io::Read};
-use isal::igzip::{read::{Encoder, GzipEncoder}, CompressionLevel, decompress, Codec};
+use isal::{read::{Encoder, GzipEncoder}, CompressionLevel, decompress, Codec};
 
 let data = b"Hello, World!".to_vec();
 
@@ -71,10 +69,10 @@ assert_eq!(decompressed.as_slice(), data);
 
 ```rust
 use std::{io, io::Write};
-use isal::igzip::{write::Decoder, CompressionLevel, compress, Codec};
+use isal::{write::Decoder, CompressionLevel, compress, Codec};
 
 let data = b"Hello, World!".to_vec();
-let compressed = compress(io::Cursor::new(data.as_slice()), CompressionLevel::Three, Codec::Gzip).unwrap();
+let compressed = compress(data.as_slice(), CompressionLevel::Three, Codec::Gzip).unwrap();
 
 let mut decompressed = vec![];
 let mut decoder = Decoder::new(&mut decompressed, Codec::Gzip);
@@ -90,8 +88,9 @@ assert_eq!(decompressed.as_slice(), data);
 
 ### Benchmarks
 
-Checkout the [README](./benches/README.md) in the benches directory.
+TL/DR: It's roughly 5-10x faster on average than the default settings with flate2.
 
+Checkout the [README](./benches/README.md) in the benches directory.
 Criterion benchmark report available here: https://milesgranger.github.io/isal-rs/benches/criterion/report/
 
 ---
