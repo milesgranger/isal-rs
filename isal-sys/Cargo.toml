@@ -1,9 +1,9 @@
 [package]
 name = "isal-sys"
-version = "0.5.2+496255c"
+version = "0.5.3+496255c"
 edition = "2021"
 description = "isa-l sys crate"
-license = "MIT AND BSD-3-Clause"
+license = "BSD-3-Clause"
 authors = ["Miles Granger <miles59923@gmail.com>"]
 documentation = "https://docs.rs/isal-rs"
 homepage = "https://github.com/milesgranger/isal-rs"
