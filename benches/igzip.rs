@@ -46,8 +46,7 @@ fn roundtrip(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("isal", name), data, |b, data| {
             b.iter(|| {
                 let compressed =
-                    isal::compress(data, isal::CompressionLevel::best(), isal::Codec::Gzip)
-                        .unwrap();
+                    isal::compress(data, isal::CompressionLevel::Three, isal::Codec::Gzip).unwrap();
                 let decompressed =
                     isal::decompress(compressed.as_slice(), isal::Codec::Gzip).unwrap();
                 assert_eq!(data.len(), decompressed.len());
@@ -56,7 +55,7 @@ fn roundtrip(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("flate2", name), data, |b, data| {
             b.iter(|| {
                 let mut compressed = vec![];
-                let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
+                let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::new(3));
                 let _ = io::copy(&mut encoder, &mut compressed).unwrap();
 
                 let mut decompressed = vec![];
@@ -85,7 +84,7 @@ fn read_encoder(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("flate2", name), data, |b, data| {
             b.iter(|| {
                 let mut output = vec![];
-                let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::best());
+                let mut encoder = flate2::read::GzEncoder::new(data, flate2::Compression::new(3));
                 let _ = io::copy(&mut encoder, &mut output).unwrap();
             })
         });
@@ -109,7 +108,7 @@ fn write_encoder(c: &mut Criterion) {
             b.iter(|| {
                 let mut output = vec![];
                 let mut encoder =
-                    flate2::write::GzEncoder::new(&mut output, flate2::Compression::best());
+                    flate2::write::GzEncoder::new(&mut output, flate2::Compression::new(3));
                 let _ = io::copy(&mut Cursor::new(&data), &mut encoder).unwrap();
             })
         });
