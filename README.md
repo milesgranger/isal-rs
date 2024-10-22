@@ -88,10 +88,14 @@ assert_eq!(decompressed.as_slice(), data);
 
 ### Benchmarks
 
-TL/DR: It's roughly 5-10x faster on average than the default settings with flate2.
+TL/DR: It's roughly 5-10x faster than flate2 with the default features, and
+~2-3x faster using flate2 with zlib-ng backend.
 
 Checkout the [README](./benches/README.md) in the benches directory.
 Criterion benchmark report available here: https://milesgranger.github.io/isal-rs/benches/criterion/report/
+
+_NOTE:_ ISA-L supports compression levels 0, 1, 3. These benchmarks compare gzip using compression level 3
+for both flate2 and isal-rs.
 
 ---
 
