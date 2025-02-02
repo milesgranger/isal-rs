@@ -9,7 +9,13 @@ fn main() {
 
     let is_static = cfg!(feature = "static");
     let is_shared = cfg!(feature = "shared");
-    let target = std::env::var("TARGET").unwrap();
+    let rust_target = std::env::var("TARGET").unwrap();
+    let target = if rust_target.starts_with("riscv64") {
+        let (_cpu, rest) = rust_target.split_once('-').unwrap();
+        format!("riscv64-{rest}")
+    } else {
+        rust_target
+    };
     let out_dir = PathBuf::from(&std::env::var("OUT_DIR").unwrap());
 
     // Copy isa-l source into out; not allow to modify things outside of out dir
